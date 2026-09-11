@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node src/api/server.js",
     "fetch": "node src/jobs/fetchAds.js",
+    "fetch:one": "node src/jobs/fetchOneKeyword.js",
     "migrate": "node src/db/migrate.js"
   },
   "dependencies": {

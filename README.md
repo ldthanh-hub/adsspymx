@@ -116,6 +116,39 @@ này nếu sau này quay lại dùng `metaAdLibrary.js` (ví dụ mở rộng sa
 3. Vào tab **Actions**, chạy thử workflow bằng nút **Run workflow** (workflow_dispatch) — **BẮT BUỘC chạy thử tay trước**, kiểm tra log không lỗi, kiểm tra bảng `ads` trong Supabase có dữ liệu hợp lệ, TRƯỚC KHI để lịch tự động chạy hàng ngày.
 4. Sau khi chạy thử ổn, lịch cron (7h sáng giờ Mexico City) sẽ tự chạy mỗi ngày.
 
+## Quét 1 từ khóa theo yêu cầu (khi tìm không ra kết quả)
+
+**Vì sao cần tính năng này**: ô tìm kiếm trên web chỉ lọc TRONG số quảng cáo đã quét sẵn từ danh
+sách từ khóa cố định ở `server/src/config/keywords.js` (job `fetch-daily.yml` chạy mỗi sáng) — KHÔNG
+tìm trực tiếp trên Meta Ad Library. Nếu bạn gõ 1 từ khóa/thương hiệu chưa từng nằm trong danh sách đó
+(VD: "Seyoul", hoặc 1 đối thủ mới xuất hiện), ô tìm kiếm sẽ luôn ra 0 kết quả — KHÔNG PHẢI lỗi hay
+do dữ liệu chưa nạp xong. Dùng workflow dưới đây để quét thử 1 lần, không cần sửa code.
+
+**Lưu ý**: không tức thời như search thật — cần vào GitHub thao tác tay, mất khoảng 1-3 phút.
+
+Các bước:
+1. Vào repo trên GitHub → tab **Actions** (thanh trên cùng, cạnh Code/Pull requests).
+2. Ở cột bên trái, chọn workflow tên **"Quét 1 từ khóa theo yêu cầu (thủ công)"**.
+3. Bấm nút **Run workflow** (góc phải, có ô sổ xuống) → điền:
+   - **keyword**: từ khóa hoặc tên thương hiệu muốn quét (VD: `Seyoul`).
+   - **country**: chọn `MX` hoặc `US`.
+   - **category**: để trống nếu không chắc, hoặc chọn 1 trong 3 ngành hàng đang theo dõi (chỉ ảnh
+     hưởng cách hiển thị/phân loại, không ảnh hưởng kết quả quét).
+4. Bấm nút xanh **Run workflow** để bắt đầu. Đợi khoảng 1-3 phút, refresh tab Actions tới khi thấy
+   dấu ✅ xanh (ID chạy mới nhất, tên "Quét 1 từ khóa theo yêu cầu").
+5. Quay lại web, tải lại trang (F5), gõ lại đúng từ khóa vừa quét vào ô tìm kiếm — nếu Meta Ad
+   Library có quảng cáo công khai khớp từ khóa đó, giờ sẽ hiện ra.
+6. Nếu vẫn không ra kết quả: hoặc đối thủ/thương hiệu đó THẬT SỰ không có quảng cáo công khai đang
+   chạy tại thị trường đã chọn (rất có thể xảy ra — không phải lỗi công cụ), hoặc từ khóa cần thử
+   viết khác đi (VD tên thương hiệu có dấu/không dấu, thêm/bớt từ mô tả ngành để thu hẹp — xem log
+   chi tiết trong tab Actions, bước "Quét từ khóa được yêu cầu", để biết chính xác quét được bao
+   nhiêu quảng cáo).
+
+**Về lâu dài**: nếu 1 từ khóa/thương hiệu quét thử ra kết quả tốt và bạn muốn theo dõi THƯỜNG XUYÊN
+(không phải chỉ tra 1 lần), hãy thêm hẳn vào danh sách cố định ở `server/src/config/keywords.js` để
+nó được quét lại mỗi ngày cùng job chính — workflow này chỉ dành cho tra cứu phát sinh, không thay
+thế danh sách theo dõi thường xuyên.
+
 ## Checklist bảo mật & xử lý lỗi (đã áp dụng trong code, rà lại trước khi dùng thật)
 
 - [x] `.env` nằm trong `.gitignore` — secret không bao giờ commit vào git.

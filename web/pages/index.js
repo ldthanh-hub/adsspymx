@@ -357,6 +357,17 @@ export default function Home() {
             <div className="empty-state">
               <p>Không tìm thấy quảng cáo nào khớp bộ lọc hiện tại.</p>
               <p className="muted small">Thử bỏ bớt bộ lọc, hoặc đổi từ khóa/thương hiệu ở thanh bộ lọc phía trên.</p>
+              {contentSearch.trim().length > 0 && (
+                // Ô tìm kiếm chỉ lọc TRONG số quảng cáo đã quét sẵn (xem ghi chú đầu file) — không
+                // tìm trực tiếp trên Meta. Gợi ý hướng xử lý khi search không ra gì, thay vì để
+                // người dùng tưởng nhầm là lỗi/thiếu dữ liệu.
+                <p className="muted small empty-hint">
+                  Không thấy "{contentSearch}"? Có thể từ khóa này CHƯA nằm trong danh sách quét thường xuyên. Bạn có
+                  thể yêu cầu quét thử 1 lần qua GitHub Actions → workflow{" "}
+                  <strong>&quot;Quét 1 từ khóa theo yêu cầu&quot;</strong> (mất khoảng 1-3 phút, xem hướng dẫn trong
+                  README).
+                </p>
+              )}
             </div>
           )}
 
@@ -984,6 +995,11 @@ export default function Home() {
           border-radius: 12px;
           padding: 48px 20px;
           text-align: center;
+        }
+        .empty-hint {
+          max-width: 480px;
+          margin: 14px auto 0;
+          line-height: 1.5;
         }
 
         .footnote {
