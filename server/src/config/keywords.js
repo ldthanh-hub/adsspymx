@@ -3,10 +3,30 @@
 // Mỗi từ khóa nên đủ cụ thể để tránh quá nhiều kết quả không liên quan (Meta giới hạn phân trang).
 
 export const KEYWORDS = [
-  "suplementos",
+  // --- Từ khóa ngành hàng Mỹ phẩm (khám phá rộng, không giới hạn 1 đối thủ cụ thể) ---
+  "maquillaje",
+  "cosméticos",
   "cuidado de la piel",
-  "ropa mujer",
-  // thêm từ khóa của bạn ở đây
+  "skincare",
+  "belleza",
+
+  // --- Thương hiệu Mexico / DTC quy mô vừa-nhỏ (thường chạy ads performance mạnh trên FB/IG,
+  //     phù hợp nhất để học hỏi creative vì cùng quy mô ngân sách với đa số doanh nghiệp vừa và nhỏ) ---
+  "Bissú",
+  "Pai Pai",
+  "GOC Make Up",
+  "Miku Cosmetics",
+  "Naked Lab",
+  "Sinless Beauty",
+  "Beauty Creations",
+
+  // --- Thương hiệu quốc tế phổ biến tại Mexico (tham khảo benchmark thị trường,
+  //     ads thường thiên về branding hơn là performance) ---
+  "Maybelline",
+  "NYX Cosmetics",
+  "Wet n Wild",
+
+  // thêm từ khóa/thương hiệu của bạn ở đây
 ];
 
 // Giới hạn số trang tối đa lấy về mỗi từ khóa / mỗi lần chạy job,
