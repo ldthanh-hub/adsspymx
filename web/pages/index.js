@@ -1,90 +1,34 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useRouter } from "next/router";
+import Layout from "../components/Layout";
+import {
+  INDUSTRY_TERMS,
+  avatarGradient,
+  initials,
+  formatRelativeDate,
+  enduranceTier,
+  facebookUrlFor,
+  useDebouncedValue,
+} from "../lib/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const PAGE_SIZE = 60;
 
-// 5 từ khóa ngành hàng chung (không phải tên thương hiệu cụ thể) — dùng để tách 2 nhóm trong
-// sidebar "Ngành hàng" / "Thương hiệu", giúp research theo brand nhanh hơn (yêu cầu của user).
-const INDUSTRY_TERMS = new Set(["maquillaje", "cosméticos", "cuidado de la piel", "skincare", "belleza"]);
-
-// Bảng màu gradient cố định (không random mỗi lần render) để card của cùng 1 brand luôn cùng màu —
-// giúp mắt nhận diện nhanh brand quen thuộc khi lướt qua nhiều card, giống cách PipiAds tô màu
-// theo advertiser.
-const AVATAR_GRADIENTS = [
-  ["#6C5CE7", "#a29bfe"],
-  ["#00b894", "#55efc4"],
-  ["#e17055", "#fab1a0"],
-  ["#0984e3", "#74b9ff"],
-  ["#d63031", "#ff7675"],
-  ["#00b8a9", "#5efce8"],
-  ["#e84393", "#fd79a8"],
-  ["#fdcb6e", "#ffeaa7"],
-  ["#2d3436", "#636e72"],
-  ["#6c5ce7", "#fd79a8"],
-];
-
-function hashString(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = (h << 5) - h + str.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h);
-}
-
-function avatarGradient(name) {
-  const [from, to] = AVATAR_GRADIENTS[hashString(name || "?") % AVATAR_GRADIENTS.length];
-  return `linear-gradient(135deg, ${from}, ${to})`;
-}
-
-function initials(name) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-function formatRelativeDate(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  const diffMs = Date.now() - d.getTime();
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 1) return "vừa xong";
-  if (diffMin < 60) return `${diffMin} phút trước`;
-  const diffH = Math.round(diffMin / 60);
-  if (diffH < 24) return `${diffH} giờ trước`;
-  const diffD = Math.round(diffH / 24);
-  return `${diffD} ngày trước`;
-}
-
-// Đánh dấu "độ bền" quảng cáo — tín hiệu nghiên cứu quan trọng nhất của công cụ spy ads: ad chạy
-// càng lâu không đổi thường đồng nghĩa nó đang hiệu quả (đối thủ không rút vì vẫn ra đơn).
-function enduranceTier(days) {
-  if (days == null) return { label: null, tone: "muted" };
-  if (days >= 180) return { label: "🔥 Bền lâu", tone: "hot" };
-  if (days >= 60) return { label: "Đang ổn định", tone: "good" };
-  if (days >= 14) return { label: "Mới ổn định", tone: "ok" };
-  return { label: "Mới xuất hiện", tone: "new" };
-}
-
-function useDebouncedValue(value, delayMs) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(t);
-  }, [value, delayMs]);
-  return debounced;
-}
-
 export default function Home() {
+  const router = useRouter();
+
   const [ads, setAds] = useState([]);
   const [keywordStats, setKeywordStats] = useState([]);
-  const [selectedKeyword, setSelectedKeyword] = useState(null); // null = tất cả
+  const [brandStats, setBrandStats] = useState([]);
+
+  const [selectedKeywords, setSelectedKeywords] = useState(new Set());
+  const [selectedBrands, setSelectedBrands] = useState(new Set());
+  const [brandFilterText, setBrandFilterText] = useState("");
+  const [showAllBrands, setShowAllBrands] = useState(false);
+
   const [statusFilter, setStatusFilter] = useState("active"); // active | all
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 400);
+  const [contentSearch, setContentSearch] = useState(""); // tìm trong nội dung quảng cáo (q)
+  const debouncedContentSearch = useDebouncedValue(contentSearch, 400);
   const [sortMode, setSortMode] = useState("endurance"); // endurance | newest
 
   const [loading, setLoading] = useState(false);
@@ -95,15 +39,29 @@ export default function Home() {
 
   const offsetRef = useRef(0);
 
-  const fetchKeywordStats = useCallback(async () => {
+  // Đọc ?brand=X trên URL (đến từ trang Dashboard khi bấm "Xem quảng cáo") để preset sẵn bộ lọc
+  // thương hiệu — chỉ áp dụng 1 lần khi router đã sẵn sàng, tránh ghi đè lựa chọn của user sau đó.
+  const appliedBrandFromUrl = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || appliedBrandFromUrl.current) return;
+    appliedBrandFromUrl.current = true;
+    const brandParam = router.query.brand;
+    if (brandParam) {
+      setSelectedBrands(new Set([String(brandParam)]));
+    }
+  }, [router.isReady, router.query.brand]);
+
+  const fetchStats = useCallback(async () => {
     if (!API_BASE) return;
     try {
-      const res = await fetch(`${API_BASE}/api/keywords`);
-      if (!res.ok) return;
-      const body = await res.json();
-      setKeywordStats(body.data || []);
+      const [kwRes, brandRes] = await Promise.all([
+        fetch(`${API_BASE}/api/keywords`),
+        fetch(`${API_BASE}/api/brands`),
+      ]);
+      if (kwRes.ok) setKeywordStats((await kwRes.json()).data || []);
+      if (brandRes.ok) setBrandStats((await brandRes.json()).data || []);
     } catch {
-      /* stats sidebar không critical — im lặng bỏ qua, bảng chính vẫn hoạt động */
+      /* sidebar stats không critical — im lặng bỏ qua, bảng chính vẫn hoạt động */
     }
   }, []);
 
@@ -118,8 +76,9 @@ export default function Home() {
       setError(null);
       try {
         const params = new URLSearchParams();
-        if (selectedKeyword) params.set("keyword", selectedKeyword);
-        if (debouncedSearch) params.set("page_name", debouncedSearch);
+        if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
+        if (selectedBrands.size) params.set("page_names", Array.from(selectedBrands).join(","));
+        if (debouncedContentSearch) params.set("q", debouncedContentSearch);
         if (statusFilter === "active") params.set("active_only", "true");
         params.set("limit", String(PAGE_SIZE));
         params.set("offset", String(offset));
@@ -138,12 +97,12 @@ export default function Home() {
         setLoadingMore(false);
       }
     },
-    [selectedKeyword, debouncedSearch, statusFilter]
+    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter]
   );
 
   useEffect(() => {
-    fetchKeywordStats();
-  }, [fetchKeywordStats]);
+    fetchStats();
+  }, [fetchStats]);
 
   useEffect(() => {
     offsetRef.current = 0;
@@ -151,9 +110,24 @@ export default function Home() {
   }, [fetchAds]);
 
   const refreshAll = () => {
-    fetchKeywordStats();
+    fetchStats();
     offsetRef.current = 0;
     fetchAds(0);
+  };
+
+  const toggleKeyword = (kw) => {
+    setSelectedKeywords((prev) => {
+      const next = new Set(prev);
+      next.has(kw) ? next.delete(kw) : next.add(kw);
+      return next;
+    });
+  };
+  const toggleBrand = (name) => {
+    setSelectedBrands((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
   };
 
   const sortedAds = useMemo(() => {
@@ -169,9 +143,8 @@ export default function Home() {
   const totals = useMemo(() => {
     const totalAds = keywordStats.reduce((sum, k) => sum + Number(k.total || 0), 0);
     const totalActive = keywordStats.reduce((sum, k) => sum + Number(k.active || 0), 0);
-    const brandCount = keywordStats.filter((k) => !INDUSTRY_TERMS.has(k.keyword)).length;
-    return { totalAds, totalActive, brandCount };
-  }, [keywordStats]);
+    return { totalAds, totalActive, brandCount: brandStats.length };
+  }, [keywordStats, brandStats]);
 
   const lastUpdated = useMemo(() => {
     let max = null;
@@ -182,49 +155,48 @@ export default function Home() {
   }, [ads]);
 
   const industryItems = keywordStats.filter((k) => INDUSTRY_TERMS.has(k.keyword));
-  const brandItems = keywordStats.filter((k) => !INDUSTRY_TERMS.has(k.keyword));
+
+  const visibleBrands = useMemo(() => {
+    const text = brandFilterText.trim().toLowerCase();
+    let list = brandStats;
+    if (text) list = list.filter((b) => b.page_name.toLowerCase().includes(text));
+    return showAllBrands || text ? list : list.slice(0, 30);
+  }, [brandStats, brandFilterText, showAllBrands]);
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark">MX</span>
-          <div>
-            <h1>Ad Spy</h1>
-            <p>Theo dõi quảng cáo mỹ phẩm đối thủ tại Mexico</p>
-          </div>
-        </div>
-
-        <div className="search-wrap">
-          <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
-            <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          <input
-            placeholder="Tìm theo tên Page / thương hiệu..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        <button className="btn-refresh" onClick={refreshAll} disabled={loading}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M4 4v6h6M20 20v-6h-6M4.5 15a8 8 0 0014.9 2.5M19.5 9A8 8 0 004.6 6.5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+    <Layout
+      active="ads"
+      headerRight={
+        <>
+          <div className="search-wrap">
+            <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+              <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <input
+              placeholder="Tìm trong nội dung quảng cáo (VD: descuento, envío gratis...)"
+              value={contentSearch}
+              onChange={(e) => setContentSearch(e.target.value)}
             />
-          </svg>
-          <span className="btn-label">Làm mới</span>
-        </button>
-
-        <button className="btn-mobile-filter" onClick={() => setSidebarOpen((v) => !v)}>
-          Bộ lọc
-        </button>
-      </header>
-
+          </div>
+          <button className="btn-refresh" onClick={refreshAll} disabled={loading}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 4v6h6M20 20v-6h-6M4.5 15a8 8 0 0014.9 2.5M19.5 9A8 8 0 004.6 6.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="btn-label">Làm mới</span>
+          </button>
+          <button className="btn-mobile-filter" onClick={() => setSidebarOpen((v) => !v)}>
+            Bộ lọc
+          </button>
+        </>
+      }
+    >
       <div className="layout">
         <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-section">
@@ -251,54 +223,70 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="sidebar-section scroll">
+          <div className="sidebar-section">
             <div className="sidebar-title">
               Ngành hàng
               <span className="count-chip">{industryItems.length}</span>
+              {selectedKeywords.size > 0 && (
+                <button className="clear-link" onClick={() => setSelectedKeywords(new Set())}>
+                  Bỏ chọn
+                </button>
+              )}
             </div>
-            <button
-              className={`kw-row ${selectedKeyword === null ? "active" : ""}`}
-              onClick={() => setSelectedKeyword(null)}
-            >
-              <span>Tất cả</span>
-              <span className="kw-count">{totals.totalAds}</span>
-            </button>
             {industryItems.map((k) => (
-              <button
-                key={k.keyword}
-                className={`kw-row ${selectedKeyword === k.keyword ? "active" : ""}`}
-                onClick={() => setSelectedKeyword(k.keyword)}
-              >
-                <span>{k.keyword}</span>
-                <span className="kw-count">
-                  {k.total}
-                  {Number(k.active) > 0 && <i className="dot" />}
-                </span>
-              </button>
-            ))}
-
-            <div className="sidebar-title" style={{ marginTop: 18 }}>
-              Thương hiệu
-              <span className="count-chip">{brandItems.length}</span>
-            </div>
-            {brandItems.map((k) => (
-              <button
-                key={k.keyword}
-                className={`kw-row ${selectedKeyword === k.keyword ? "active" : ""}`}
-                onClick={() => setSelectedKeyword(k.keyword)}
-              >
-                <span
-                  className="brand-dot"
-                  style={{ background: avatarGradient(k.keyword) }}
+              <label key={k.keyword} className={`kw-row ${selectedKeywords.has(k.keyword) ? "active" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={selectedKeywords.has(k.keyword)}
+                  onChange={() => toggleKeyword(k.keyword)}
                 />
                 <span className="kw-label">{k.keyword}</span>
                 <span className="kw-count">
                   {k.total}
                   {Number(k.active) > 0 && <i className="dot" />}
                 </span>
-              </button>
+              </label>
             ))}
-            {brandItems.length === 0 && industryItems.length === 0 && (
+            <p className="hint-text">Có thể chọn nhiều — kết hợp được với Thương hiệu bên dưới (VD: skincare + Pai Pai).</p>
+          </div>
+
+          <div className="sidebar-section scroll">
+            <div className="sidebar-title">
+              Thương hiệu
+              <span className="count-chip">{brandStats.length}</span>
+              {selectedBrands.size > 0 && (
+                <button className="clear-link" onClick={() => setSelectedBrands(new Set())}>
+                  Bỏ chọn
+                </button>
+              )}
+            </div>
+            <input
+              className="brand-filter-input"
+              placeholder="Lọc trong danh sách..."
+              value={brandFilterText}
+              onChange={(e) => setBrandFilterText(e.target.value)}
+            />
+            {visibleBrands.map((b) => (
+              <label key={b.page_name} className={`kw-row ${selectedBrands.has(b.page_name) ? "active" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={selectedBrands.has(b.page_name)}
+                  onChange={() => toggleBrand(b.page_name)}
+                />
+                <span className="brand-dot" style={{ background: avatarGradient(b.page_name) }} />
+                <span className="kw-label">{b.page_name}</span>
+                <span className="kw-count">
+                  {b.total}
+                  {Number(b.active) > 0 && <i className="dot" />}
+                </span>
+              </label>
+            ))}
+            {!showAllBrands && !brandFilterText && brandStats.length > 30 && (
+              <button className="show-more-link" onClick={() => setShowAllBrands(true)}>
+                Hiện tất cả {brandStats.length} thương hiệu
+              </button>
+            )}
+            {brandStats.length === 0 && industryItems.length === 0 && (
               <p className="muted small">Chưa có dữ liệu — job fetch chưa chạy lần nào.</p>
             )}
           </div>
@@ -316,7 +304,7 @@ export default function Home() {
             </div>
             <div className="stat-card">
               <span className="stat-value">{totals.brandCount}</span>
-              <span className="stat-label">Thương hiệu theo dõi</span>
+              <span className="stat-label">Thương hiệu đã phát hiện</span>
             </div>
             <div className="stat-card">
               <span className="stat-value">{lastUpdated || "—"}</span>
@@ -349,10 +337,16 @@ export default function Home() {
                   const hasEngagement =
                     ad.engagement_parse_ok &&
                     (ad.likes_count != null || ad.comments_count != null || ad.shares_count != null || ad.video_views != null);
+                  const fbUrl = facebookUrlFor(ad.page_id);
                   return (
                     <article className="card" key={ad.ad_id}>
-                      <div className="card-banner" style={{ background: avatarGradient(ad.page_name) }}>
-                        <span className="card-initials">{initials(ad.page_name)}</span>
+                      <div className="card-banner" style={ad.thumbnail_url ? undefined : { background: avatarGradient(ad.page_name) }}>
+                        {ad.thumbnail_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img className="card-banner-img" src={ad.thumbnail_url} alt="" loading="lazy" />
+                        ) : (
+                          <span className="card-initials">{initials(ad.page_name)}</span>
+                        )}
                         <span className={`status-pill ${ad.is_active ? "is-live" : "is-off"}`}>
                           {ad.is_active ? "● Đang chạy" : "Đã dừng"}
                         </span>
@@ -361,7 +355,10 @@ export default function Home() {
 
                       <div className="card-body">
                         <div className="card-head">
-                          <h3 title={ad.page_name}>{ad.page_name}</h3>
+                          <div className="brand-name-wrap">
+                            <span className="brand-of-label">Brand</span>
+                            <h3 title={ad.page_name}>{ad.page_name}</h3>
+                          </div>
                           <span className="days-count">
                             {ad.days_active ?? "?"}
                             <small>ngày</small>
@@ -386,9 +383,16 @@ export default function Home() {
                             <span className="muted small">Không có số liệu tương tác công khai</span>
                           )}
                         </div>
-                        <a href={ad.snapshot_url} target="_blank" rel="noreferrer" className="btn-view">
-                          Xem gốc ↗
-                        </a>
+                        <div className="footer-links">
+                          {fbUrl && (
+                            <a href={fbUrl} target="_blank" rel="noreferrer" className="btn-fb" title="Xem trang Facebook">
+                              FB ↗
+                            </a>
+                          )}
+                          <a href={ad.snapshot_url} target="_blank" rel="noreferrer" className="btn-view">
+                            Xem gốc ↗
+                          </a>
+                        </div>
                       </div>
                     </article>
                   );
@@ -406,67 +410,18 @@ export default function Home() {
           )}
 
           <p className="footnote muted small">
-            Dữ liệu creative + độ bền chạy từ Meta Ad Library (scrape trang công khai). Like/comment/share/view là
-            best-effort, không phải mọi quảng cáo đều có — xem README của dự án để biết chi tiết giới hạn dữ liệu.
+            Dữ liệu creative + độ bền chạy từ Meta Ad Library (scrape trang công khai). Ảnh minh họa lấy trực tiếp từ
+            CDN Facebook nên có thể hết hạn theo thời gian. Like/comment/share/view là best-effort, không phải mọi
+            quảng cáo đều có — xem README của dự án để biết chi tiết giới hạn dữ liệu.
           </p>
         </main>
       </div>
 
       <style jsx>{`
-        :root {
-          color-scheme: light;
-        }
-        .app {
-          min-height: 100vh;
-          background: #f4f5fb;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-          color: #1c1d2b;
-        }
-
-        .topbar {
-          display: flex;
-          align-items: center;
-          gap: 20px;
-          padding: 14px 24px;
-          background: #14152b;
-          position: sticky;
-          top: 0;
-          z-index: 20;
-        }
-        .brand {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          white-space: nowrap;
-        }
-        .brand-mark {
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
-          background: linear-gradient(135deg, #6c5ce7, #a29bfe);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 800;
-          font-size: 13px;
-          color: #fff;
-          flex-shrink: 0;
-        }
-        .brand h1 {
-          font-size: 16px;
-          margin: 0;
-          color: #fff;
-          line-height: 1.2;
-        }
-        .brand p {
-          font-size: 11.5px;
-          margin: 0;
-          color: #9799b8;
-        }
-
         .search-wrap {
           flex: 1;
           max-width: 480px;
+          min-width: 200px;
           position: relative;
           display: flex;
           align-items: center;
@@ -484,7 +439,7 @@ export default function Home() {
           border: 1px solid #2b2c47;
           background: #1e1f3a;
           color: #fff;
-          font-size: 13.5px;
+          font-size: 13px;
           outline: none;
         }
         .search-wrap input::placeholder {
@@ -529,7 +484,7 @@ export default function Home() {
 
         .layout {
           display: grid;
-          grid-template-columns: 250px 1fr;
+          grid-template-columns: 260px 1fr;
           align-items: start;
         }
 
@@ -567,6 +522,24 @@ export default function Home() {
           font-size: 10px;
           font-weight: 600;
         }
+        .clear-link {
+          margin-left: auto;
+          background: none;
+          border: none;
+          color: #a29bfe;
+          font-size: 10.5px;
+          font-weight: 700;
+          text-transform: none;
+          letter-spacing: 0;
+          cursor: pointer;
+          padding: 0;
+        }
+        .hint-text {
+          font-size: 10.5px;
+          color: #6d6f93;
+          margin: 8px 2px 0;
+          line-height: 1.4;
+        }
 
         .pill-toggle {
           display: flex;
@@ -591,6 +564,21 @@ export default function Home() {
           color: #fff;
         }
 
+        .brand-filter-input {
+          width: 100%;
+          padding: 6px 9px;
+          border-radius: 7px;
+          border: 1px solid #2b2c47;
+          background: #1e1f3a;
+          color: #fff;
+          font-size: 12px;
+          outline: none;
+          margin-bottom: 8px;
+        }
+        .brand-filter-input::placeholder {
+          color: #6d6f93;
+        }
+
         .kw-row {
           width: 100%;
           display: flex;
@@ -613,13 +601,11 @@ export default function Home() {
           color: #fff;
           font-weight: 600;
         }
-        .kw-label {
-          flex: 1;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+        .kw-row input[type="checkbox"] {
+          flex-shrink: 0;
+          accent-color: #6c5ce7;
         }
-        .kw-row span:first-child:not(.brand-dot) {
+        .kw-label {
           flex: 1;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -645,6 +631,18 @@ export default function Home() {
           border-radius: 50%;
           background: #00d68f;
           display: inline-block;
+        }
+        .show-more-link {
+          width: 100%;
+          background: none;
+          border: 1px dashed #33355c;
+          color: #a29bfe;
+          font-size: 11.5px;
+          font-weight: 600;
+          padding: 7px;
+          border-radius: 8px;
+          cursor: pointer;
+          margin-top: 4px;
         }
 
         .content {
@@ -726,10 +724,16 @@ export default function Home() {
 
         .card-banner {
           position: relative;
-          height: 78px;
+          height: 130px;
           display: flex;
           align-items: center;
           justify-content: center;
+          overflow: hidden;
+        }
+        .card-banner-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .card-initials {
           color: #fff;
@@ -746,15 +750,15 @@ export default function Home() {
           font-weight: 700;
           padding: 3px 8px;
           border-radius: 20px;
-          background: rgba(0, 0, 0, 0.28);
+          background: rgba(0, 0, 0, 0.4);
           color: #fff;
           backdrop-filter: blur(2px);
         }
         .status-pill.is-live {
-          background: rgba(0, 184, 148, 0.9);
+          background: rgba(0, 184, 148, 0.92);
         }
         .status-pill.is-off {
-          background: rgba(45, 52, 54, 0.55);
+          background: rgba(45, 52, 54, 0.6);
         }
         .tier-pill {
           position: absolute;
@@ -765,13 +769,13 @@ export default function Home() {
           padding: 3px 8px;
           border-radius: 20px;
           color: #fff;
-          background: rgba(0, 0, 0, 0.28);
+          background: rgba(0, 0, 0, 0.4);
         }
         .tier-pill.tone-hot {
           background: #e17055;
         }
         .tier-pill.tone-good {
-          background: rgba(9, 132, 227, 0.9);
+          background: rgba(9, 132, 227, 0.92);
         }
 
         .card-body {
@@ -784,13 +788,24 @@ export default function Home() {
           justify-content: space-between;
           gap: 8px;
         }
+        .brand-name-wrap {
+          overflow: hidden;
+          max-width: 180px;
+        }
+        .brand-of-label {
+          display: block;
+          font-size: 9px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #b3b5cc;
+        }
         .card-head h3 {
           font-size: 14px;
           margin: 0;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          max-width: 170px;
         }
         .days-count {
           font-size: 15px;
@@ -848,18 +863,32 @@ export default function Home() {
           color: #6b6d87;
           flex-wrap: wrap;
         }
-        .btn-view {
+        .footer-links {
+          display: flex;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+        .btn-view,
+        .btn-fb {
           font-size: 11.5px;
           font-weight: 700;
           color: #fff;
-          background: #14152b;
           padding: 6px 10px;
           border-radius: 8px;
           text-decoration: none;
           white-space: nowrap;
         }
+        .btn-view {
+          background: #14152b;
+        }
         .btn-view:hover {
           background: #2b2c5c;
+        }
+        .btn-fb {
+          background: #0866ff;
+        }
+        .btn-fb:hover {
+          background: #0552cc;
         }
 
         .load-more-wrap {
@@ -911,19 +940,6 @@ export default function Home() {
           .btn-mobile-filter {
             display: block;
           }
-          .brand p {
-            display: none;
-          }
-          .topbar {
-            flex-wrap: wrap;
-            row-gap: 10px;
-            padding: 12px 16px;
-          }
-          .search-wrap {
-            order: 3;
-            flex-basis: 100%;
-            max-width: none;
-          }
           .btn-label {
             display: none;
           }
@@ -954,6 +970,6 @@ export default function Home() {
           }
         }
       `}</style>
-    </div>
+    </Layout>
   );
 }

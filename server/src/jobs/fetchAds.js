@@ -36,14 +36,17 @@ async function upsertAd(client, raw, keyword) {
     `INSERT INTO ads (
        ad_id, page_id, page_name, keyword, creative_text, creative_title,
        snapshot_url, platforms, delivery_start_date, delivery_stop_date,
-       is_active, days_active, first_seen_at, last_seen_at, raw_payload
+       is_active, days_active, thumbnail_url, first_seen_at, last_seen_at, raw_payload
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now(), now(), $13)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now(), now(), $14)
      ON CONFLICT (ad_id) DO UPDATE SET
        last_seen_at = now(),
        delivery_stop_date = EXCLUDED.delivery_stop_date,
        is_active = EXCLUDED.is_active,
        days_active = EXCLUDED.days_active,
+       -- Làm mới thumbnail mỗi lần thấy lại ad — link CDN của Facebook có thể hết hạn, chỉ giữ
+       -- link cũ khi lần scrape này không lấy được ảnh (tốt hơn là xoá mất ảnh đã có).
+       thumbnail_url = COALESCE(EXCLUDED.thumbnail_url, ads.thumbnail_url),
        raw_payload = EXCLUDED.raw_payload
      RETURNING (xmax = 0) AS is_new`, // xmax=0 nghĩa là vừa INSERT mới, không phải UPDATE
     [
@@ -61,6 +64,7 @@ async function upsertAd(client, raw, keyword) {
       // định được (undefined) thì coi như còn hoạt động (mặc định an toàn hơn là đánh rớt nhầm).
       raw._isActiveHint !== false,
       daysBetween(startDate, stopDate),
+      raw.thumbnail_url || null,
       JSON.stringify(raw),
     ]
   );

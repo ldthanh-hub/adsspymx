@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS ads (
   raw_payload             JSONB                       -- lưu nguyên response gốc để tra cứu/tái xử lý sau này
 );
 
+-- Thêm sau lần đầu deploy (11/09/2026) — CREATE TABLE IF NOT EXISTS ở trên không tự thêm cột
+-- mới vào bảng đã tồn tại, nên các cột thêm sau này PHẢI khai báo riêng bằng ALTER TABLE ... ADD
+-- COLUMN IF NOT EXISTS để migrate.js (chạy lại toàn bộ file này) áp dụng được lên DB production.
+ALTER TABLE ads ADD COLUMN IF NOT EXISTS thumbnail_url TEXT; -- ảnh/poster video đại diện của ad — best-effort, có thể null nếu card không có ảnh nhận diện được, và có thể hết hạn sau một thời gian vì là link CDN trực tiếp của Facebook (không host lại ảnh, xem ghi chú đầu file)
+
 CREATE INDEX IF NOT EXISTS idx_ads_keyword ON ads (keyword);
 CREATE INDEX IF NOT EXISTS idx_ads_page_id ON ads (page_id);
 CREATE INDEX IF NOT EXISTS idx_ads_is_active ON ads (is_active);

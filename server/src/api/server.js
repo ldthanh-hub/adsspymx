@@ -35,13 +35,31 @@ app.use(
 );
 
 const listQuerySchema = z.object({
-  keyword: z.string().max(100).optional(),
+  // keyword: cho phép nhiều giá trị cách nhau bởi dấu phẩy (OR) — dùng cho bộ lọc "Ngành hàng/
+  // Thương hiệu" dạng checkbox nhiều lựa chọn ở sidebar.
+  keyword: z.string().max(1000).optional(),
+  // page_names: danh sách CHÍNH XÁC tên Page (phân biệt với page_name ILIKE bên dưới) — dùng cho
+  // bộ lọc "Thương hiệu thực tế" (sourced từ /api/brands), cũng cho phép chọn nhiều.
+  page_names: z.string().max(4000).optional(),
   page_name: z.string().max(200).optional(),
+  // q: tìm full-text trong NỘI DUNG quảng cáo (creative_text) — khác với page_name (tên trang).
+  // Cho phép kết hợp với keyword/page_names: VD keyword=skincare + page_names=Pai Pai + q=descuento
+  // => ad của Pai Pai, thuộc nhóm skincare, có chữ "descuento" trong nội dung.
+  q: z.string().max(200).optional(),
   active_only: z.enum(["true", "false"]).optional(),
   min_days_active: z.coerce.number().int().min(0).max(3650).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+// Tách chuỗi "a, b,,c" -> ["a","b","c"], giới hạn số lượng để tránh query khổng lồ.
+function splitList(raw, max = 60) {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, max);
+}
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
@@ -51,18 +69,32 @@ app.get("/api/ads", async (req, res, next) => {
     if (!parsed.success) {
       return res.status(400).json({ error: "Tham số không hợp lệ", details: parsed.error.issues });
     }
-    const { keyword, page_name, active_only, min_days_active, limit, offset } = parsed.data;
+    const { keyword, page_names, page_name, q, active_only, min_days_active, limit, offset } = parsed.data;
 
     const conditions = [];
     const values = [];
 
     if (keyword) {
-      values.push(keyword);
-      conditions.push(`keyword = $${values.length}`);
+      const list = splitList(keyword);
+      if (list.length) {
+        values.push(list);
+        conditions.push(`keyword = ANY($${values.length}::text[])`);
+      }
+    }
+    if (page_names) {
+      const list = splitList(page_names);
+      if (list.length) {
+        values.push(list);
+        conditions.push(`page_name = ANY($${values.length}::text[])`);
+      }
     }
     if (page_name) {
       values.push(`%${page_name}%`);
       conditions.push(`page_name ILIKE $${values.length}`);
+    }
+    if (q) {
+      values.push(`%${q}%`);
+      conditions.push(`creative_text ILIKE $${values.length}`);
     }
     if (active_only === "true") {
       conditions.push(`is_active = true`);
@@ -80,7 +112,7 @@ app.get("/api/ads", async (req, res, next) => {
       `SELECT ad_id, page_id, page_name, keyword, creative_text, creative_title,
               snapshot_url, platforms, delivery_start_date, delivery_stop_date,
               is_active, days_active, likes_count, comments_count, shares_count,
-              video_views, engagement_parse_ok, first_seen_at, last_seen_at
+              video_views, engagement_parse_ok, thumbnail_url, first_seen_at, last_seen_at
        FROM ads
        ${where}
        ORDER BY days_active DESC NULLS LAST, last_seen_at DESC
@@ -99,6 +131,53 @@ app.get("/api/keywords", async (req, res, next) => {
     const { rows } = await pool.query(
       `SELECT keyword, COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active
        FROM ads GROUP BY keyword ORDER BY total DESC`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Danh sách THƯƠNG HIỆU THỰC TẾ (nhóm theo page_name — tên Page thật trên Facebook), khác với
+// /api/keywords vốn chỉ liệt kê các từ khóa/tên đã CHỦ ĐỘNG cấu hình sẵn trong keywords.js.
+// Lý do cần endpoint riêng: khi search bằng 1 từ khóa ngành hàng chung (VD "skincare"), Meta trả
+// về quảng cáo của RẤT NHIỀU Page khác nhau — không chỉ các brand đã liệt kê thủ công. Endpoint
+// này giúp thấy hết toàn bộ đối thủ đã "vô tình" thu thập được, không bị giới hạn bởi danh sách
+// cấu hình — đây chính là nguồn dữ liệu cho sidebar "Thương hiệu" và trang Dashboard brand.
+app.get("/api/brands", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT page_name,
+              (array_agg(page_id ORDER BY last_seen_at DESC))[1] AS page_id,
+              COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE is_active) AS active,
+              MAX(days_active) AS max_days_active,
+              array_agg(DISTINCT keyword ORDER BY keyword) AS keywords,
+              MIN(first_seen_at) AS first_seen_at,
+              MAX(last_seen_at) AS last_seen_at
+       FROM ads
+       GROUP BY page_name
+       ORDER BY total DESC
+       LIMIT 400`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Số ad MỚI phát hiện theo từng ngày trong N ngày gần nhất — nguồn cho biểu đồ xu hướng ở trang
+// Dashboard. Dùng first_seen_at (ngày công cụ NHÌN THẤY ad lần đầu, không phải ngày ad thật sự bắt
+// đầu chạy trên Facebook) vì đây là proxy trung thực duy nhất cho "hoạt động phát hiện" của chính
+// pipeline — không suy ra được xu hướng chi tiêu/thị trường thật từ đây.
+app.get("/api/trend", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT date_trunc('day', first_seen_at)::date AS day, COUNT(*) AS ads_discovered
+       FROM ads
+       WHERE first_seen_at >= now() - interval '30 days'
+       GROUP BY day
+       ORDER BY day ASC`
     );
     res.json({ data: rows });
   } catch (err) {

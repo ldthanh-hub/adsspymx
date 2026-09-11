@@ -37,6 +37,12 @@
 // KHÔNG lấy được (so với kỳ vọng ban đầu dùng API): page_id dạng số (chỉ lấy được "page handle"
 // dạng chữ nếu có link Page rõ ràng), ngày dừng chạy chính xác cho ad không còn hoạt động (trang
 // danh sách không hiển thị), publisher_platforms (icon không có text/label ổn định để đọc).
+//
+// ẢNH ĐẠI DIỆN (thumbnail_url, thêm 11/09/2026): lấy trực tiếp link ảnh/poster video từ CDN của
+// Facebook (scontent.*.fbcdn.net) — KHÔNG tải/host lại file (đúng nguyên tắc "chỉ lưu link" của dự
+// án). Hệ quả: (1) link này có thể HẾT HẠN sau một thời gian vì là CDN URL có token, ảnh cũ trong
+// DB có thể 404 — chấp nhận được vì job chạy lại hàng ngày sẽ tự làm mới link cho ad vẫn còn thấy;
+// (2) ad dạng carousel chỉ lấy được ảnh ĐẦU TIÊN, không lấy hết các ảnh trong bộ.
 
 import { chromium } from "playwright";
 
@@ -227,6 +233,22 @@ export async function scrapeAds(page, keyword, { country = "MX", maxScrolls = 5 
 
   const rawCards = await page
     .evaluate(() => {
+      // Heuristic ảnh đại diện (kiểm chứng trực tiếp bằng DOM thật, không đoán): mỗi card luôn có
+      // 1 ảnh avatar nhỏ (~60x60, ảnh Page) + tối đa 1 ảnh creative lớn (ví dụ 480x600) hoặc 1
+      // <video> có thuộc tính poster (frame đầu video). Loại avatar bằng ngưỡng kích thước, ưu
+      // tiên poster video (đại diện đúng nội dung ad hơn ảnh tĩnh), fallback về ảnh lớn nhất còn lại.
+      const AVATAR_MAX_SIDE = 64;
+      function pickThumbnail(el) {
+        const video = el.querySelector("video[poster]");
+        if (video && video.poster) return video.poster;
+        const imgs = Array.from(el.querySelectorAll("img"))
+          .map((img) => ({ src: img.src, area: (img.naturalWidth || img.width || 0) * (img.naturalHeight || img.height || 0), w: img.naturalWidth || img.width || 0, h: img.naturalHeight || img.height || 0 }))
+          .filter((i) => i.src && i.w > AVATAR_MAX_SIDE && i.h > AVATAR_MAX_SIDE);
+        if (imgs.length === 0) return null;
+        imgs.sort((a, b) => b.area - a.area);
+        return imgs[0].src;
+      }
+
       const spans = Array.from(document.querySelectorAll("span")).filter((el) =>
         /:\s*\d{10,18}\s*$/.test((el.textContent || "").trim())
       );
@@ -247,16 +269,17 @@ export async function scrapeAds(page, keyword, { country = "MX", maxScrolls = 5 
           }
         }
 
-        return { text: el.innerText, pageHandle };
+        return { text: el.innerText, pageHandle, thumbnailUrl: pickThumbnail(el) };
       });
     })
     .catch(() => []);
 
   const seen = new Set();
   const results = [];
-  for (const { text, pageHandle } of rawCards) {
+  for (const { text, pageHandle, thumbnailUrl } of rawCards) {
     const parsed = parseCard(text, pageHandle, keyword);
     if (!parsed || seen.has(parsed.id)) continue;
+    parsed.thumbnail_url = thumbnailUrl || null;
     seen.add(parsed.id);
     results.push(parsed);
   }
