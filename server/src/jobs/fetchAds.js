@@ -83,7 +83,10 @@ async function processKeyword(client, page, keyword) {
 
     const newAds = [];
     for (const raw of rawAds) {
-      if (!raw.id || !raw.page_id) continue; // dữ liệu thiếu id/page_id thì bỏ qua, không upsert rác
+      // dữ liệu thiếu id/page_id/page_name thì bỏ qua, không upsert rác — page_name NOT NULL trong DB,
+      // và dù adLibraryScraper.js giờ đã luôn trả page_name (có fallback), vẫn giữ check này làm
+      // lưới an toàn thứ 2 phòng trường hợp parser thay đổi sau này.
+      if (!raw.id || !raw.page_id || !raw.page_name) continue;
       const { isNew, snapshotUrl } = await upsertAd(client, raw, keyword);
       if (isNew && snapshotUrl) newAds.push({ adId: raw.id, snapshotUrl });
     }

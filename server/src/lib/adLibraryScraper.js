@@ -158,14 +158,22 @@ export function parseCard(rawText, pageHandle, keyword) {
   const startDate = extractDate(lines[idLineIdx + 1]);
 
   const sponsoredIdx = lines.findIndex((l) => SPONSORED_LABELS.includes(l.toLowerCase()));
-  const pageName = sponsoredIdx > 0 ? lines[sponsoredIdx - 1] : null;
+  // pageName: ưu tiên dòng ngay trước nhãn "Sponsored" (chính xác nhất). Nếu không tìm được
+  // nhãn đó (layout/ngôn ngữ khác dự kiến), fallback về pageHandle lấy từ link Page trong card,
+  // rồi cuối cùng về chính library ID — LUÔN phải có giá trị non-null vì cột page_name trong DB
+  // là NOT NULL (bug thực tế đã xảy ra: sponsoredIdx không tìm thấy -> pageName null nhưng
+  // page_id vẫn có giá trị qua pageHandle -> insert lỗi vi phạm constraint). Đánh dấu các trường
+  // hợp fallback bằng _pageNameUncertain để có thể theo dõi/chẩn đoán qua raw_payload sau này.
+  const rawPageName = sponsoredIdx > 0 ? lines[sponsoredIdx - 1] : null;
+  const pageName = rawPageName || pageHandle || `unknown-${libraryId}`;
   const bodyLines = sponsoredIdx >= 0 ? lines.slice(sponsoredIdx + 1) : [];
   const creativeText = bodyLines.slice(0, 4).join(" | ").slice(0, 3000) || null;
 
   return {
     id: libraryId,
-    page_id: pageHandle || pageName || null,
+    page_id: pageHandle || rawPageName || `unknown-${libraryId}`,
     page_name: pageName,
+    _pageNameUncertain: !rawPageName,
     ad_creative_bodies: creativeText ? [creativeText] : [],
     ad_creative_link_titles: [],
     ad_delivery_start_time: startDate,
