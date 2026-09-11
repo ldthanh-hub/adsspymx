@@ -23,6 +23,11 @@ jobs:
       - name: Cài dependencies
         run: npm install
 
+      - name: Áp dụng cấu trúc database mới nhất (an toàn, chạy lại nhiều lần không mất dữ liệu)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run migrate
+
       - name: Cài Chromium cho Playwright
         run: npx playwright install --with-deps chromium
 
