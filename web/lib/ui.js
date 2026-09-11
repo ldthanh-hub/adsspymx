@@ -9,6 +9,38 @@ export const MARKET_CODES = Object.keys(MARKET_LABELS);
 
 export const MEDIA_TYPE_LABELS = { video: "Video", image: "Hình ảnh", none: "Không có ảnh/video" };
 
+// Nhãn tiếng Việt cho các từ khóa NGÀNH HÀNG (type: "industry" trong config/keywords.js) — chỉ
+// dùng để HIỂN THỊ cho dễ đọc, KHÔNG thay đổi giá trị filter thật gửi lên API (vẫn dùng đúng chuỗi
+// keyword gốc, vì đó mới là từ khóa thật đã dùng để search trên Meta Ad Library). Không áp dụng cho
+// tên thương hiệu (type: "brand") — tên thương hiệu không dịch.
+// LƯU Ý: thêm ngành/từ khóa industry mới ở server/src/config/keywords.js thì nhớ thêm nhãn tương
+// ứng ở đây — 2 nơi không tự đồng bộ vì đây chỉ là lớp hiển thị, cố tình tách khỏi dữ liệu thật.
+export const INDUSTRY_LABELS_VI = {
+  // Mexico
+  maquillaje: "Trang điểm",
+  "cosméticos": "Mỹ phẩm",
+  "cuidado de la piel": "Chăm sóc da",
+  belleza: "Làm đẹp",
+  "moda mujer": "Thời trang nữ",
+  "ropa mujer": "Quần áo nữ",
+  "zapatos mujer": "Giày nữ",
+  "artículos para el hogar": "Đồ dùng gia đình",
+  "decoración del hogar": "Trang trí nhà cửa",
+  // United States
+  skincare: "Chăm sóc da",
+  makeup: "Trang điểm",
+  "beauty products": "Sản phẩm làm đẹp",
+  cosmetics: "Mỹ phẩm",
+  "women's fashion": "Thời trang nữ",
+  "men's clothing": "Quần áo nam",
+  "home decor": "Trang trí nhà cửa",
+  "kitchen gadgets": "Dụng cụ nhà bếp",
+};
+
+export function industryLabelVi(keyword) {
+  return INDUSTRY_LABELS_VI[keyword] || keyword;
+}
+
 // TRƯỚC ĐÂY: phân loại "ngành hàng" vs "thương hiệu" bằng cách so chuỗi tên keyword với 1 Set cố
 // định ở đây — dễ vỡ mỗi khi thêm ngành mới ở server (phải nhớ sửa cả 2 nơi). TỪ 11/09/2026: server
 // trả thẳng field "type" ("industry"/"brand") theo từng keyword qua /api/keywords (gắn cứng từ

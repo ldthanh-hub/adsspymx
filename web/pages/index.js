@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import Layout from "../components/Layout";
+import Dropdown from "../components/Dropdown";
 import {
   MARKET_LABELS,
   MARKET_CODES,
   MEDIA_TYPE_LABELS,
+  industryLabelVi,
   avatarGradient,
   initials,
   formatRelativeDate,
@@ -39,7 +41,6 @@ export default function Home() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const offsetRef = useRef(0);
 
@@ -199,149 +200,131 @@ export default function Home() {
             </svg>
             <span className="btn-label">Làm mới</span>
           </button>
-          <button className="btn-mobile-filter" onClick={() => setSidebarOpen((v) => !v)}>
-            Bộ lọc
-          </button>
         </>
       }
     >
-      <div className="layout">
-        <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-          <div className="sidebar-section">
-            <div className="sidebar-title">Thị trường</div>
-            <div className="pill-toggle">
-              <button className={countryFilter === "" ? "active" : ""} onClick={() => setCountryFilter("")}>
-                Tất cả
+      <main className="content">
+        <div className="filter-bar">
+          <div className="pill-toggle">
+            <span className="pill-group-label">Thị trường</span>
+            <button className={countryFilter === "" ? "active" : ""} onClick={() => setCountryFilter("")}>
+              Tất cả
+            </button>
+            {MARKET_CODES.map((code) => (
+              <button key={code} className={countryFilter === code ? "active" : ""} onClick={() => setCountryFilter(code)}>
+                {MARKET_LABELS[code]}
               </button>
-              {MARKET_CODES.map((code) => (
-                <button
-                  key={code}
-                  className={countryFilter === code ? "active" : ""}
-                  onClick={() => setCountryFilter(code)}
-                >
-                  {MARKET_LABELS[code]}
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
 
-          <div className="sidebar-section">
-            <div className="sidebar-title">Trạng thái</div>
-            <div className="pill-toggle">
-              <button className={statusFilter === "active" ? "active" : ""} onClick={() => setStatusFilter("active")}>
-                Đang chạy
-              </button>
-              <button className={statusFilter === "inactive" ? "active" : ""} onClick={() => setStatusFilter("inactive")}>
-                Đã dừng
-              </button>
-              <button className={statusFilter === "all" ? "active" : ""} onClick={() => setStatusFilter("all")}>
-                Tất cả
-              </button>
-            </div>
+          <div className="pill-toggle">
+            <span className="pill-group-label">Trạng thái</span>
+            <button className={statusFilter === "active" ? "active" : ""} onClick={() => setStatusFilter("active")}>
+              Đang chạy
+            </button>
+            <button className={statusFilter === "inactive" ? "active" : ""} onClick={() => setStatusFilter("inactive")}>
+              Đã dừng
+            </button>
+            <button className={statusFilter === "all" ? "active" : ""} onClick={() => setStatusFilter("all")}>
+              Tất cả
+            </button>
           </div>
 
-          <div className="sidebar-section">
-            <div className="sidebar-title">Loại nội dung</div>
-            <div className="pill-toggle">
-              <button className={mediaTypeFilter === "" ? "active" : ""} onClick={() => setMediaTypeFilter("")}>
-                Tất cả
-              </button>
-              <button className={mediaTypeFilter === "video" ? "active" : ""} onClick={() => setMediaTypeFilter("video")}>
-                {MEDIA_TYPE_LABELS.video}
-              </button>
-              <button className={mediaTypeFilter === "image" ? "active" : ""} onClick={() => setMediaTypeFilter("image")}>
-                {MEDIA_TYPE_LABELS.image}
-              </button>
-            </div>
-            <p className="hint-text">
-              Không có bộ lọc "Nền tảng" (Facebook/Instagram riêng từng ad) — đã kiểm tra trực tiếp, Meta không hiển
-              thị nhãn nào để đọc ra tên nền tảng một cách đáng tin cậy cho từng quảng cáo.
-            </p>
+          <div className="pill-toggle">
+            <span className="pill-group-label">Loại nội dung</span>
+            <button className={mediaTypeFilter === "" ? "active" : ""} onClick={() => setMediaTypeFilter("")}>
+              Tất cả
+            </button>
+            <button className={mediaTypeFilter === "video" ? "active" : ""} onClick={() => setMediaTypeFilter("video")}>
+              {MEDIA_TYPE_LABELS.video}
+            </button>
+            <button className={mediaTypeFilter === "image" ? "active" : ""} onClick={() => setMediaTypeFilter("image")}>
+              {MEDIA_TYPE_LABELS.image}
+            </button>
           </div>
 
-          <div className="sidebar-section">
-            <div className="sidebar-title">Sắp xếp</div>
-            <div className="pill-toggle">
-              <button className={sortMode === "endurance" ? "active" : ""} onClick={() => setSortMode("endurance")}>
-                Chạy lâu nhất
-              </button>
-              <button className={sortMode === "newest" ? "active" : ""} onClick={() => setSortMode("newest")}>
-                Mới phát hiện
-              </button>
-            </div>
+          <div className="pill-toggle">
+            <span className="pill-group-label">Sắp xếp</span>
+            <button className={sortMode === "endurance" ? "active" : ""} onClick={() => setSortMode("endurance")}>
+              Chạy lâu nhất
+            </button>
+            <button className={sortMode === "newest" ? "active" : ""} onClick={() => setSortMode("newest")}>
+              Mới phát hiện
+            </button>
           </div>
 
-          <div className="sidebar-section">
-            <div className="sidebar-title">
-              Ngành hàng
-              <span className="count-chip">{industryItems.length}</span>
+          <Dropdown label="Ngành hàng" count={selectedKeywords.size} width={260}>
+            <div className="dd-head">
+              <span>{industryItems.length} từ khóa</span>
               {selectedKeywords.size > 0 && (
                 <button className="clear-link" onClick={() => setSelectedKeywords(new Set())}>
                   Bỏ chọn
                 </button>
               )}
             </div>
-            {industryItems.map((k) => (
-              <label key={k.keyword} className={`kw-row ${selectedKeywords.has(k.keyword) ? "active" : ""}`}>
-                <input
-                  type="checkbox"
-                  checked={selectedKeywords.has(k.keyword)}
-                  onChange={() => toggleKeyword(k.keyword)}
-                />
-                <span className="kw-label">{k.keyword}</span>
-                <span className="kw-count">
-                  {k.total}
-                  {Number(k.active) > 0 && <i className="dot" />}
-                </span>
-              </label>
-            ))}
-            <p className="hint-text">Có thể chọn nhiều — kết hợp được với Thương hiệu bên dưới (VD: skincare + Pai Pai).</p>
-          </div>
-
-          <div className="sidebar-section scroll">
-            <div className="sidebar-title">
-              Thương hiệu
-              <span className="count-chip">{brandStats.length}</span>
-              {selectedBrands.size > 0 && (
-                <button className="clear-link" onClick={() => setSelectedBrands(new Set())}>
-                  Bỏ chọn
-                </button>
-              )}
+            <div className="dd-list">
+              {industryItems.map((k) => (
+                <label key={k.keyword} className={`kw-row ${selectedKeywords.has(k.keyword) ? "active" : ""}`}>
+                  <input type="checkbox" checked={selectedKeywords.has(k.keyword)} onChange={() => toggleKeyword(k.keyword)} />
+                  <span className="kw-label-wrap">
+                    <span className="kw-label">{industryLabelVi(k.keyword)}</span>
+                    {industryLabelVi(k.keyword) !== k.keyword && <span className="kw-label-orig">{k.keyword}</span>}
+                  </span>
+                  <span className="kw-count">
+                    {k.total}
+                    {Number(k.active) > 0 && <i className="dot" />}
+                  </span>
+                </label>
+              ))}
+              {industryItems.length === 0 && <p className="muted small dd-empty">Chưa có dữ liệu.</p>}
             </div>
+          </Dropdown>
+
+          <Dropdown label="Thương hiệu" count={selectedBrands.size} width={280}>
             <input
               className="brand-filter-input"
               placeholder="Lọc trong danh sách..."
               value={brandFilterText}
               onChange={(e) => setBrandFilterText(e.target.value)}
+              autoFocus
             />
-            {visibleBrands.map((b) => (
-              <label key={b.page_name} className={`kw-row ${selectedBrands.has(b.page_name) ? "active" : ""}`}>
-                <input
-                  type="checkbox"
-                  checked={selectedBrands.has(b.page_name)}
-                  onChange={() => toggleBrand(b.page_name)}
-                />
-                <span className="brand-dot" style={{ background: avatarGradient(b.page_name) }} />
-                <span className="kw-label">{b.page_name}</span>
-                <span className="kw-count">
-                  {b.total}
-                  {Number(b.active) > 0 && <i className="dot" />}
-                </span>
-              </label>
-            ))}
-            {!showAllBrands && !brandFilterText && brandStats.length > 30 && (
-              <button className="show-more-link" onClick={() => setShowAllBrands(true)}>
-                Hiện tất cả {brandStats.length} thương hiệu
-              </button>
+            {selectedBrands.size > 0 && (
+              <div className="dd-head">
+                <span>{selectedBrands.size} đã chọn</span>
+                <button className="clear-link" onClick={() => setSelectedBrands(new Set())}>
+                  Bỏ chọn
+                </button>
+              </div>
             )}
-            {brandStats.length === 0 && industryItems.length === 0 && (
-              <p className="muted small">Chưa có dữ liệu — job fetch chưa chạy lần nào.</p>
-            )}
-          </div>
-        </aside>
+            <div className="dd-list scroll">
+              {visibleBrands.map((b) => (
+                <label key={b.page_name} className={`kw-row ${selectedBrands.has(b.page_name) ? "active" : ""}`}>
+                  <input type="checkbox" checked={selectedBrands.has(b.page_name)} onChange={() => toggleBrand(b.page_name)} />
+                  <span className="brand-dot" style={{ background: avatarGradient(b.page_name) }} />
+                  <span className="kw-label">{b.page_name}</span>
+                  <span className="kw-count">
+                    {b.total}
+                    {Number(b.active) > 0 && <i className="dot" />}
+                  </span>
+                </label>
+              ))}
+              {!showAllBrands && !brandFilterText && brandStats.length > 30 && (
+                <button className="show-more-link" onClick={() => setShowAllBrands(true)}>
+                  Hiện tất cả {brandStats.length} thương hiệu
+                </button>
+              )}
+              {brandStats.length === 0 && <p className="muted small dd-empty">Chưa có dữ liệu — job fetch chưa chạy lần nào.</p>}
+            </div>
+          </Dropdown>
+        </div>
 
-        <main className="content">
-          <div className="stat-row">
+        <p className="hint-text bar-hint">
+          Ngành hàng + Thương hiệu kết hợp được với nhau (VD: chọn "Chăm sóc da" + "Pai Pai"). Không có bộ lọc "Nền
+          tảng" riêng từng ad (Facebook/Instagram...) — đã kiểm tra trực tiếp, Meta không hiển thị nhãn nào để đọc ra
+          tên nền tảng một cách đáng tin cậy cho từng quảng cáo.
+        </p>
+
+        <div className="stat-row">
             <div className="stat-card">
               <span className="stat-value">{totals.totalAds}</span>
               <span className="stat-label">Tổng ad đã ghi nhận</span>
@@ -373,7 +356,7 @@ export default function Home() {
           {!loading && !error && sortedAds.length === 0 && (
             <div className="empty-state">
               <p>Không tìm thấy quảng cáo nào khớp bộ lọc hiện tại.</p>
-              <p className="muted small">Thử bỏ bớt bộ lọc, hoặc đổi từ khóa/thương hiệu ở sidebar.</p>
+              <p className="muted small">Thử bỏ bớt bộ lọc, hoặc đổi từ khóa/thương hiệu ở thanh bộ lọc phía trên.</p>
             </div>
           )}
 
@@ -470,7 +453,6 @@ export default function Home() {
             quảng cáo đều có — xem README của dự án để biết chi tiết giới hạn dữ liệu.
           </p>
         </main>
-      </div>
 
       <style jsx>{`
         .search-wrap {
@@ -526,112 +508,111 @@ export default function Home() {
           background: #5b4bd6;
         }
 
-        .btn-mobile-filter {
-          display: none;
-          background: #1e1f3a;
-          color: #fff;
-          border: 1px solid #2b2c47;
-          padding: 9px 14px;
-          border-radius: 9px;
-          font-size: 13px;
-          cursor: pointer;
+        .content {
+          padding: 20px 24px 48px;
+          max-width: 1400px;
         }
 
-        .layout {
-          display: grid;
-          grid-template-columns: 260px 1fr;
-          align-items: start;
-        }
-
-        .sidebar {
-          position: sticky;
-          top: 61px;
-          height: calc(100vh - 61px);
-          overflow: hidden;
-          background: #181a30;
-          padding: 18px 14px;
+        .filter-bar {
           display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-        .sidebar-section.scroll {
-          overflow-y: auto;
-          flex: 1;
-        }
-        .sidebar-title {
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: #82849f;
-          font-weight: 700;
-          margin-bottom: 8px;
-          display: flex;
+          flex-wrap: wrap;
           align-items: center;
-          gap: 6px;
+          gap: 10px;
+          background: #181a30;
+          border-radius: 14px;
+          padding: 12px 14px;
+          margin-bottom: 8px;
         }
-        .count-chip {
-          background: #2b2c47;
-          color: #b6b8d6;
-          border-radius: 20px;
-          padding: 1px 7px;
-          font-size: 10px;
-          font-weight: 600;
-        }
-        .clear-link {
-          margin-left: auto;
-          background: none;
-          border: none;
-          color: #a29bfe;
-          font-size: 10.5px;
-          font-weight: 700;
-          text-transform: none;
-          letter-spacing: 0;
-          cursor: pointer;
-          padding: 0;
-        }
-        .hint-text {
-          font-size: 10.5px;
-          color: #6d6f93;
-          margin: 8px 2px 0;
-          line-height: 1.4;
+        .bar-hint {
+          margin: 0 0 20px;
         }
 
         .pill-toggle {
           display: flex;
+          align-items: center;
           background: #23244a;
           border-radius: 9px;
           padding: 3px;
           gap: 3px;
         }
+        .pill-group-label {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          font-weight: 700;
+          color: #6d6f93;
+          padding: 0 8px 0 6px;
+          white-space: nowrap;
+        }
         .pill-toggle button {
-          flex: 1;
           border: none;
           background: transparent;
           color: #9799b8;
           font-size: 12px;
           font-weight: 600;
-          padding: 7px 6px;
+          padding: 7px 10px;
           border-radius: 7px;
           cursor: pointer;
+          white-space: nowrap;
         }
         .pill-toggle button.active {
           background: #6c5ce7;
           color: #fff;
         }
 
+        .clear-link {
+          margin-left: auto;
+          background: none;
+          border: none;
+          color: #6c5ce7;
+          font-size: 11.5px;
+          font-weight: 700;
+          cursor: pointer;
+          padding: 0;
+        }
+        .hint-text {
+          font-size: 10.5px;
+          color: #9799b8;
+          margin: 8px 2px 0;
+          line-height: 1.4;
+        }
+
+        .dd-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 11px;
+          color: #9799b8;
+          font-weight: 600;
+          padding: 2px 6px 8px;
+        }
+        .dd-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          max-height: 340px;
+          overflow-y: auto;
+        }
+        .dd-list.scroll {
+          max-height: 300px;
+        }
+        .dd-empty {
+          padding: 10px 6px;
+        }
+
         .brand-filter-input {
           width: 100%;
-          padding: 6px 9px;
+          padding: 8px 10px;
           border-radius: 7px;
-          border: 1px solid #2b2c47;
-          background: #1e1f3a;
-          color: #fff;
-          font-size: 12px;
+          border: 1px solid #dcdee8;
+          background: #f7f8fc;
+          color: #1c1d2b;
+          font-size: 12.5px;
           outline: none;
           margin-bottom: 8px;
         }
-        .brand-filter-input::placeholder {
-          color: #6d6f93;
+        .brand-filter-input:focus {
+          border-color: #6c5ce7;
         }
 
         .kw-row {
@@ -641,7 +622,7 @@ export default function Home() {
           gap: 8px;
           background: transparent;
           border: none;
-          color: #c6c7e0;
+          color: #4c4e63;
           font-size: 13px;
           padding: 7px 8px;
           border-radius: 8px;
@@ -649,19 +630,31 @@ export default function Home() {
           text-align: left;
         }
         .kw-row:hover {
-          background: #23244a;
+          background: #f4f5fa;
         }
         .kw-row.active {
-          background: #2b2c5c;
-          color: #fff;
+          background: #f1effd;
+          color: #1c1d2b;
           font-weight: 600;
         }
         .kw-row input[type="checkbox"] {
           flex-shrink: 0;
           accent-color: #6c5ce7;
         }
-        .kw-label {
+        .kw-label-wrap {
           flex: 1;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .kw-label {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .kw-label-orig {
+          font-size: 10px;
+          color: #a3a5c2;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -674,7 +667,7 @@ export default function Home() {
         }
         .kw-count {
           font-size: 11px;
-          color: #82849f;
+          color: #9799b8;
           display: flex;
           align-items: center;
           gap: 4px;
@@ -690,19 +683,14 @@ export default function Home() {
         .show-more-link {
           width: 100%;
           background: none;
-          border: 1px dashed #33355c;
-          color: #a29bfe;
+          border: 1px dashed #dcdee8;
+          color: #6c5ce7;
           font-size: 11.5px;
           font-weight: 600;
           padding: 7px;
           border-radius: 8px;
           cursor: pointer;
           margin-top: 4px;
-        }
-
-        .content {
-          padding: 20px 24px 48px;
-          max-width: 1400px;
         }
 
         .stat-row {
@@ -1003,36 +991,17 @@ export default function Home() {
         }
 
         @media (max-width: 900px) {
-          .layout {
-            grid-template-columns: 1fr;
-          }
-          .btn-mobile-filter {
-            display: block;
-          }
           .btn-label {
             display: none;
           }
           .btn-refresh {
             padding: 9px 11px;
           }
-          .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            width: 78vw;
-            max-width: 300px;
-            height: 100vh;
-            z-index: 30;
-            box-shadow: 12px 0 40px rgba(0, 0, 0, 0.3);
-            transform: translateX(-100%);
-            transition: transform 0.2s ease;
-          }
-          .sidebar.open {
-            transform: translateX(0);
-          }
           .content {
             padding: 16px;
+          }
+          .filter-bar {
+            gap: 8px;
           }
           .stat-row {
             grid-template-columns: repeat(2, 1fr);
