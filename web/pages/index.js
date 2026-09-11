@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import Layout from "../components/Layout";
 import {
-  INDUSTRY_TERMS,
+  MARKET_LABELS,
+  MARKET_CODES,
+  MEDIA_TYPE_LABELS,
   avatarGradient,
   initials,
   formatRelativeDate,
@@ -26,7 +28,9 @@ export default function Home() {
   const [brandFilterText, setBrandFilterText] = useState("");
   const [showAllBrands, setShowAllBrands] = useState(false);
 
-  const [statusFilter, setStatusFilter] = useState("active"); // active | all
+  const [statusFilter, setStatusFilter] = useState("active"); // active | inactive | all
+  const [countryFilter, setCountryFilter] = useState(""); // "" = tất cả thị trường | "MX" | "US"
+  const [mediaTypeFilter, setMediaTypeFilter] = useState(""); // "" = tất cả | "video" | "image"
   const [contentSearch, setContentSearch] = useState(""); // tìm trong nội dung quảng cáo (q)
   const debouncedContentSearch = useDebouncedValue(contentSearch, 400);
   const [sortMode, setSortMode] = useState("endurance"); // endurance | newest
@@ -54,16 +58,17 @@ export default function Home() {
   const fetchStats = useCallback(async () => {
     if (!API_BASE) return;
     try {
+      const suffix = countryFilter ? `?country=${encodeURIComponent(countryFilter)}` : "";
       const [kwRes, brandRes] = await Promise.all([
-        fetch(`${API_BASE}/api/keywords`),
-        fetch(`${API_BASE}/api/brands`),
+        fetch(`${API_BASE}/api/keywords${suffix}`),
+        fetch(`${API_BASE}/api/brands${suffix}`),
       ]);
       if (kwRes.ok) setKeywordStats((await kwRes.json()).data || []);
       if (brandRes.ok) setBrandStats((await brandRes.json()).data || []);
     } catch {
       /* sidebar stats không critical — im lặng bỏ qua, bảng chính vẫn hoạt động */
     }
-  }, []);
+  }, [countryFilter]);
 
   const fetchAds = useCallback(
     async (offset) => {
@@ -79,7 +84,10 @@ export default function Home() {
         if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
         if (selectedBrands.size) params.set("page_names", Array.from(selectedBrands).join(","));
         if (debouncedContentSearch) params.set("q", debouncedContentSearch);
+        if (countryFilter) params.set("country", countryFilter);
+        if (mediaTypeFilter) params.set("media_type", mediaTypeFilter);
         if (statusFilter === "active") params.set("active_only", "true");
+        else if (statusFilter === "inactive") params.set("active_only", "false");
         params.set("limit", String(PAGE_SIZE));
         params.set("offset", String(offset));
 
@@ -97,7 +105,7 @@ export default function Home() {
         setLoadingMore(false);
       }
     },
-    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter]
+    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter]
   );
 
   useEffect(() => {
@@ -154,7 +162,7 @@ export default function Home() {
     return formatRelativeDate(max);
   }, [ads]);
 
-  const industryItems = keywordStats.filter((k) => INDUSTRY_TERMS.has(k.keyword));
+  const industryItems = keywordStats.filter((k) => k.type === "industry");
 
   const visibleBrands = useMemo(() => {
     const text = brandFilterText.trim().toLowerCase();
@@ -200,15 +208,55 @@ export default function Home() {
       <div className="layout">
         <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-section">
+            <div className="sidebar-title">Thị trường</div>
+            <div className="pill-toggle">
+              <button className={countryFilter === "" ? "active" : ""} onClick={() => setCountryFilter("")}>
+                Tất cả
+              </button>
+              {MARKET_CODES.map((code) => (
+                <button
+                  key={code}
+                  className={countryFilter === code ? "active" : ""}
+                  onClick={() => setCountryFilter(code)}
+                >
+                  {MARKET_LABELS[code]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="sidebar-section">
             <div className="sidebar-title">Trạng thái</div>
             <div className="pill-toggle">
               <button className={statusFilter === "active" ? "active" : ""} onClick={() => setStatusFilter("active")}>
                 Đang chạy
               </button>
+              <button className={statusFilter === "inactive" ? "active" : ""} onClick={() => setStatusFilter("inactive")}>
+                Đã dừng
+              </button>
               <button className={statusFilter === "all" ? "active" : ""} onClick={() => setStatusFilter("all")}>
                 Tất cả
               </button>
             </div>
+          </div>
+
+          <div className="sidebar-section">
+            <div className="sidebar-title">Loại nội dung</div>
+            <div className="pill-toggle">
+              <button className={mediaTypeFilter === "" ? "active" : ""} onClick={() => setMediaTypeFilter("")}>
+                Tất cả
+              </button>
+              <button className={mediaTypeFilter === "video" ? "active" : ""} onClick={() => setMediaTypeFilter("video")}>
+                {MEDIA_TYPE_LABELS.video}
+              </button>
+              <button className={mediaTypeFilter === "image" ? "active" : ""} onClick={() => setMediaTypeFilter("image")}>
+                {MEDIA_TYPE_LABELS.image}
+              </button>
+            </div>
+            <p className="hint-text">
+              Không có bộ lọc "Nền tảng" (Facebook/Instagram riêng từng ad) — đã kiểm tra trực tiếp, Meta không hiển
+              thị nhãn nào để đọc ra tên nền tảng một cách đáng tin cậy cho từng quảng cáo.
+            </p>
           </div>
 
           <div className="sidebar-section">
@@ -364,7 +412,14 @@ export default function Home() {
                             <small>ngày</small>
                           </span>
                         </div>
-                        <span className="keyword-tag">{ad.keyword}</span>
+                        <div className="tag-row">
+                          <span className="keyword-tag">{ad.keyword}</span>
+                          {Array.isArray(ad.countries) && ad.countries.length > 0 && (
+                            <span className="country-tag" title="Thị trường phát hiện được quảng cáo này">
+                              {ad.countries.map((c) => MARKET_LABELS[c] || c).join(" + ")}
+                            </span>
+                          )}
+                        </div>
                         <p className="creative-text">
                           {ad.creative_text || <em className="muted">(không có nội dung text)</em>}
                         </p>
@@ -824,13 +879,27 @@ export default function Home() {
           text-transform: uppercase;
         }
 
+        .tag-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 6px;
+        }
         .keyword-tag {
           display: inline-block;
-          margin-top: 6px;
           font-size: 10.5px;
           font-weight: 700;
           color: #6c5ce7;
           background: #f1effd;
+          padding: 2px 8px;
+          border-radius: 20px;
+        }
+        .country-tag {
+          display: inline-block;
+          font-size: 10.5px;
+          font-weight: 700;
+          color: #0984e3;
+          background: #eaf4ff;
           padding: 2px 8px;
           border-radius: 20px;
         }

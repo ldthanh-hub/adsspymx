@@ -2,10 +2,17 @@
 // tách riêng để 2 trang không lặp lại cùng 1 logic (màu avatar, tính "độ bền chạy", build link FB...).
 import { useState, useEffect } from "react";
 
-// 5 từ khóa NGÀNH HÀNG chung (không phải tên thương hiệu cụ thể) — phần còn lại trong danh sách
-// keyword đều coi là "thẻ tìm kiếm gắn với 1 brand cụ thể", tách 2 nhóm để lọc theo Ngành hàng /
-// Thương hiệu tách bạch ở sidebar.
-export const INDUSTRY_TERMS = new Set(["maquillaje", "cosméticos", "cuidado de la piel", "skincare", "belleza"]);
+// Danh sách thị trường đang theo dõi — khớp với MARKETS trong server/src/config/keywords.js (chỉ
+// cần khai báo tên hiển thị ở đây, phần từ khóa/thương hiệu nằm bên server, không lặp lại).
+export const MARKET_LABELS = { MX: "Mexico", US: "United States" };
+export const MARKET_CODES = Object.keys(MARKET_LABELS);
+
+export const MEDIA_TYPE_LABELS = { video: "Video", image: "Hình ảnh", none: "Không có ảnh/video" };
+
+// TRƯỚC ĐÂY: phân loại "ngành hàng" vs "thương hiệu" bằng cách so chuỗi tên keyword với 1 Set cố
+// định ở đây — dễ vỡ mỗi khi thêm ngành mới ở server (phải nhớ sửa cả 2 nơi). TỪ 11/09/2026: server
+// trả thẳng field "type" ("industry"/"brand") theo từng keyword qua /api/keywords (gắn cứng từ
+// config/keywords.js lúc quét) — dùng trực tiếp field đó, không cần Set này nữa.
 
 const AVATAR_GRADIENTS = [
   ["#6C5CE7", "#a29bfe"],

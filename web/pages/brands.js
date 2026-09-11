@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import Layout from "../components/Layout";
-import { INDUSTRY_TERMS, avatarGradient, initials, facebookUrlFor, useDebouncedValue } from "../lib/ui";
+import { MARKET_LABELS, MARKET_CODES, avatarGradient, initials, facebookUrlFor, useDebouncedValue } from "../lib/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const TABLE_PAGE = 25;
@@ -101,6 +101,7 @@ export default function BrandsDashboard() {
   const debouncedTableSearch = useDebouncedValue(tableSearch, 300);
   const [tableSort, setTableSort] = useState("total"); // total | active | endurance
   const [visibleCount, setVisibleCount] = useState(TABLE_PAGE);
+  const [countryFilter, setCountryFilter] = useState("MX"); // mặc định thị trường gốc; "" = gộp tất cả
 
   useEffect(() => {
     if (!API_BASE) {
@@ -112,10 +113,11 @@ export default function BrandsDashboard() {
       setLoading(true);
       setError(null);
       try {
+        const suffix = countryFilter ? `?country=${encodeURIComponent(countryFilter)}` : "";
         const [brandsRes, kwRes, trendRes] = await Promise.all([
-          fetch(`${API_BASE}/api/brands`),
-          fetch(`${API_BASE}/api/keywords`),
-          fetch(`${API_BASE}/api/trend`),
+          fetch(`${API_BASE}/api/brands${suffix}`),
+          fetch(`${API_BASE}/api/keywords${suffix}`),
+          fetch(`${API_BASE}/api/trend${suffix}`),
         ]);
         if (!brandsRes.ok || !kwRes.ok || !trendRes.ok) throw new Error("API trả về lỗi khi tải dashboard");
         setBrandStats((await brandsRes.json()).data || []);
@@ -127,7 +129,7 @@ export default function BrandsDashboard() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [countryFilter]);
 
   const totals = useMemo(() => {
     const totalAds = brandStats.reduce((s, b) => s + Number(b.total || 0), 0);
@@ -142,7 +144,7 @@ export default function BrandsDashboard() {
   );
 
   const industryBreakdown = useMemo(
-    () => keywordStats.filter((k) => INDUSTRY_TERMS.has(k.keyword)).sort((a, b) => Number(b.total) - Number(a.total)),
+    () => keywordStats.filter((k) => k.type === "industry").sort((a, b) => Number(b.total) - Number(a.total)),
     [keywordStats]
   );
 
@@ -167,11 +169,25 @@ export default function BrandsDashboard() {
     <Layout active="brands">
       <main className="content">
         <div className="page-head">
-          <h2>Dashboard Brand — Thị trường Mỹ phẩm Mexico</h2>
-          <p className="muted">
-            Số liệu THẬT từ dữ liệu đã cào được (không có CTR/CVR/CPA hay lượt tìm kiếm — Meta Ad Library công khai
-            không cung cấp các số này, xem README).
-          </p>
+          <div className="page-head-row">
+            <div>
+              <h2>Dashboard Brand — {countryFilter ? MARKET_LABELS[countryFilter] || countryFilter : "Tất cả thị trường"}</h2>
+              <p className="muted">
+                Số liệu THẬT từ dữ liệu đã cào được (không có CTR/CVR/CPA hay lượt tìm kiếm — Meta Ad Library công khai
+                không cung cấp các số này, xem README).
+              </p>
+            </div>
+            <div className="market-toggle">
+              <button className={countryFilter === "" ? "active" : ""} onClick={() => setCountryFilter("")}>
+                Tất cả
+              </button>
+              {MARKET_CODES.map((code) => (
+                <button key={code} className={countryFilter === code ? "active" : ""} onClick={() => setCountryFilter(code)}>
+                  {MARKET_LABELS[code]}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {error && <div className="error-banner">{error}</div>}
@@ -253,9 +269,9 @@ export default function BrandsDashboard() {
                 </div>
               </div>
               <p className="panel-sub">
-                Ngành hàng suy ra từ các từ khóa NGÀNH HÀNG chung đã từng tìm ra ad của brand này — brand chỉ được tìm
-                thấy qua tên riêng (chưa từng xuất hiện dưới 1 từ khóa ngành hàng nào) sẽ để trống cột này, không suy
-                đoán. Sản phẩm/website/TikTok chưa có nguồn dữ liệu tự động — có thể bổ sung thủ công sau.
+                Ngành hàng gắn cứng theo cấu hình từ khóa/thương hiệu (server/src/config/keywords.js), không suy đoán
+                bằng cách so chuỗi tên. Sản phẩm/website/TikTok chưa có nguồn dữ liệu tự động — có thể bổ sung thủ
+                công sau.
               </p>
               <div className="table-wrap">
                 <table>
@@ -273,7 +289,7 @@ export default function BrandsDashboard() {
                   <tbody>
                     {filteredTable.slice(0, visibleCount).map((b) => {
                       const fbUrl = facebookUrlFor(b.page_id);
-                      const industries = (b.keywords || []).filter((k) => INDUSTRY_TERMS.has(k));
+                      const industries = b.categories || [];
                       return (
                         <tr key={b.page_name}>
                           <td>
@@ -339,6 +355,13 @@ export default function BrandsDashboard() {
           max-width: 1200px;
           margin: 0 auto;
         }
+        .page-head-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
         .page-head h2 {
           font-size: 19px;
           margin: 4px 0 2px;
@@ -346,6 +369,29 @@ export default function BrandsDashboard() {
         .page-head p {
           font-size: 12.5px;
           margin: 0 0 18px;
+        }
+        .market-toggle {
+          display: flex;
+          background: #f1f2f8;
+          border-radius: 9px;
+          padding: 3px;
+          gap: 3px;
+          flex-shrink: 0;
+        }
+        .market-toggle button {
+          border: none;
+          background: transparent;
+          color: #6b6d87;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 7px 12px;
+          border-radius: 7px;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .market-toggle button.active {
+          background: #6c5ce7;
+          color: #fff;
         }
         .muted {
           color: #9799b8;

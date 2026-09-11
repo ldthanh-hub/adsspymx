@@ -43,6 +43,18 @@
 // án). Hệ quả: (1) link này có thể HẾT HẠN sau một thời gian vì là CDN URL có token, ảnh cũ trong
 // DB có thể 404 — chấp nhận được vì job chạy lại hàng ngày sẽ tự làm mới link cho ad vẫn còn thấy;
 // (2) ad dạng carousel chỉ lấy được ảnh ĐẦU TIÊN, không lấy hết các ảnh trong bộ.
+//
+// MEDIA_TYPE (thêm 11/09/2026): "video"/"image"/"none", suy ra từ CHÍNH heuristic thumbnail ở trên
+// (không thêm giả định DOM mới) — dùng để lọc "Loại nội dung" ở giao diện.
+//
+// KHÔNG lưu "platform" (Facebook/Instagram/...) theo từng ad, dù URL search chấp nhận filter
+// publisher_platforms[] thật (đã kiểm chứng bằng cách áp filter Platform trên trang thật và đọc URL
+// kết quả). Lý do: đã kiểm tra trực tiếp DOM của dòng "Platforms" trên mỗi thẻ quảng cáo — mỗi icon
+// nền tảng là 1 <div> dùng CSS mask-image trỏ tới 1 sprite ảnh dùng chung của Meta, xác định bằng
+// mask-position tính theo PIXEL, KHÔNG có text/aria-label/alt/title nào để đọc ra tên nền tảng. Suy
+// luận platform từ toạ độ pixel của sprite là cách làm cực kỳ dễ vỡ (Meta đổi sprite là sai hết,
+// không có cách phát hiện sai sớm) — vi phạm đúng nguyên tắc "không đoán, không suy luận từ thứ
+// không ổn định" của dự án, nên KHÔNG triển khai làm bộ lọc "thật" ở giao diện.
 
 import { chromium } from "playwright";
 
@@ -238,15 +250,19 @@ export async function scrapeAds(page, keyword, { country = "MX", maxScrolls = 5 
       // <video> có thuộc tính poster (frame đầu video). Loại avatar bằng ngưỡng kích thước, ưu
       // tiên poster video (đại diện đúng nội dung ad hơn ảnh tĩnh), fallback về ảnh lớn nhất còn lại.
       const AVATAR_MAX_SIDE = 64;
+      // Trả về cả thumbnail lẫn media_type ("video"/"image"/"none") từ CÙNG 1 heuristic đã kiểm
+      // chứng thật (11/09/2026, thêm media_type) — không thêm giả định DOM mới, chỉ đọc thêm 1 giá
+      // trị từ kết quả đã tính sẵn. Xem ghi chú media_type trong schema.sql về lý do KHÔNG có
+      // "platform" per-ad (icon nền tảng là CSS sprite không label, đã kiểm tra trực tiếp DOM thật).
       function pickThumbnail(el) {
         const video = el.querySelector("video[poster]");
-        if (video && video.poster) return video.poster;
+        if (video && video.poster) return { url: video.poster, mediaType: "video" };
         const imgs = Array.from(el.querySelectorAll("img"))
           .map((img) => ({ src: img.src, area: (img.naturalWidth || img.width || 0) * (img.naturalHeight || img.height || 0), w: img.naturalWidth || img.width || 0, h: img.naturalHeight || img.height || 0 }))
           .filter((i) => i.src && i.w > AVATAR_MAX_SIDE && i.h > AVATAR_MAX_SIDE);
-        if (imgs.length === 0) return null;
+        if (imgs.length === 0) return { url: null, mediaType: "none" };
         imgs.sort((a, b) => b.area - a.area);
-        return imgs[0].src;
+        return { url: imgs[0].src, mediaType: "image" };
       }
 
       const spans = Array.from(document.querySelectorAll("span")).filter((el) =>
@@ -269,17 +285,19 @@ export async function scrapeAds(page, keyword, { country = "MX", maxScrolls = 5 
           }
         }
 
-        return { text: el.innerText, pageHandle, thumbnailUrl: pickThumbnail(el) };
+        const { url: thumbnailUrl, mediaType } = pickThumbnail(el);
+        return { text: el.innerText, pageHandle, thumbnailUrl, mediaType };
       });
     })
     .catch(() => []);
 
   const seen = new Set();
   const results = [];
-  for (const { text, pageHandle, thumbnailUrl } of rawCards) {
+  for (const { text, pageHandle, thumbnailUrl, mediaType } of rawCards) {
     const parsed = parseCard(text, pageHandle, keyword);
     if (!parsed || seen.has(parsed.id)) continue;
     parsed.thumbnail_url = thumbnailUrl || null;
+    parsed.media_type = mediaType || "none";
     seen.add(parsed.id);
     results.push(parsed);
   }
