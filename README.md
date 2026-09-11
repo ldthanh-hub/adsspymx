@@ -1,21 +1,50 @@
 # MX Ad Spy — MVP theo dõi quảng cáo Facebook/Instagram tại Mexico
 
 Công cụ nội bộ, quy mô nhỏ, dùng để hỗ trợ nghiên cứu creative đối thủ tại thị trường Mexico.
-Nguồn dữ liệu duy nhất trong bản MVP này: **Meta Ad Library API** (chính thức, miễn phí, hợp pháp).
 
-## ĐỌC TRƯỚC — Giới hạn dữ liệu thật (rất quan trọng, tránh kỳ vọng sai)
+## ⚠️ CẬP NHẬT QUAN TRỌNG — đổi nguồn dữ liệu (đọc trước khi làm gì khác)
+
+Bản thiết kế ban đầu dùng **Meta Ad Library API chính thức** để lấy dữ liệu. Sau khi triển khai
+thật và test trực tiếp qua Graph API Explorer, phát hiện: theo tài liệu chính thức tại
+facebook.com/ads/library/api, API này **chỉ** trả dữ liệu cho (1) quảng cáo về vấn đề xã hội/bầu
+cử/chính trị ở bất kỳ đâu, hoặc (2) quảng cáo bất kỳ loại nào **nhưng chỉ nếu phân phối đến
+EU/UK**. Mexico không thuộc EU/UK, và mỹ phẩm không phải quảng cáo chính trị — nên với đúng mục
+tiêu ban đầu của dự án, API chính thức **luôn trả lỗi/rỗng**, bất kể tài khoản có được Meta duyệt
+quyền `ads_read` hay hoàn tất xác minh danh tính hay không. Đây là giới hạn sản phẩm cố định của
+Meta, không phải lỗi cấu hình.
+
+**Giải pháp đang dùng:** scrape trực tiếp trang **facebook.com/ads/library** (trang public, không
+cần đăng nhập) bằng Playwright — xem `server/src/lib/adLibraryScraper.js`. `META_ACCESS_TOKEN`
+không còn cần thiết cho luồng lấy dữ liệu chính nữa (vẫn giữ trong secrets phòng khi cần dùng lại
+Graph API — ví dụ nếu mở rộng sang EU/UK).
+
+### ⚠️ RỦI RO PHÁP LÝ CẦN CHẤP NHẬN TRƯỚC KHI BẬT CRON TỰ ĐỘNG
+
+Điều khoản dịch vụ của Meta **cấm truy cập/scrape tự động** ngoài API chính thức được cấp phép,
+kể cả với trang public không cần đăng nhập. Rủi ro thực tế:
+- Meta có thể **chặn IP** của Render/GitHub Actions runner đang gọi — job sẽ lỗi rõ ràng (xem bảng
+  `fetch_runs`), không mất dữ liệu đã có, nhưng sẽ ngừng cập nhật cho đến khi xử lý.
+- Về lý thuyết Meta có quyền hành động pháp lý dân sự nếu quy mô đủ lớn/mang tính thương mại — với
+  quy mô NỘI BỘ, KHÔNG thương mại hóa, tần suất THẤP (mặc định 1 lần/ngày) như dự án này, rủi ro bị
+  chú ý thấp hơn nhiều so với các dịch vụ thương mại như PiPiADS/BigSpy, nhưng **không bằng không**.
+
+Đây là quyết định đánh đổi có chủ đích giữa nhóm dự án — chấp nhận rủi ro thấp để đổi lấy dữ liệu
+thật tại thị trường Mexico, vì không có con đường hợp pháp/chính thức nào khác cho use case này.
+Nếu job bắt đầu lỗi liên tục, đó là tín hiệu để **tạm dừng cron và xem lại**, không phải để cố né
+bằng cách đổi proxy/User-Agent.
+
+## Giới hạn dữ liệu thật (rất quan trọng, tránh kỳ vọng sai)
 
 Với quảng cáo thương mại thông thường (không phải chính trị/xã hội), Meta **không** công khai qua
-bất kỳ kênh hợp pháp nào: spend, impressions (lượt hiển thị), reach, CTR, conversion, ROAS. Đây là
-giới hạn chính sách của Meta — áp dụng cho MỌI tool, kể cả PiPiADS/BigSpy. Không có cách hợp pháp
-nào lấy được các số này của đối thủ.
+bất kỳ kênh nào — kể cả trang public: spend, impressions (lượt hiển thị), reach, CTR, conversion,
+ROAS. Đây là giới hạn chính sách của Meta — áp dụng cho MỌI tool, kể cả PiPiADS/BigSpy. Không có
+cách nào lấy được các số này của đối thủ, hợp pháp hay không.
 
 Những gì tool này lấy được, và mức độ tin cậy:
 
 | Dữ liệu | Nguồn | Độ tin cậy |
 |---|---|---|
-| Creative (text, tiêu đề), Page, nền tảng chạy | Meta Ad Library API | Chính thức, 100% tin cậy |
-| Ngày bắt đầu / kết thúc chạy → `days_active` | Meta Ad Library API | Chính thức, 100% tin cậy |
+| Creative (text), tên Page, ngày bắt đầu chạy | Scrape trang Ad Library public (Playwright) | **Best-effort** — parse theo cấu trúc/vị trí văn bản, không có selector ổn định, có thể hỏng khi Meta đổi giao diện |
 | Like / Comment / Share / Lượt xem video | Render trang snapshot công khai bằng Playwright | **Best-effort** — chỉ có khi ad gắn với 1 bài post công khai; Meta đổi giao diện có thể làm parser hỏng bất kỳ lúc nào |
 | Spend, Impressions, ROAS | — | **Không khả dụng, không cố lấy** |
 
@@ -27,8 +56,8 @@ Những gì tool này lấy được, và mức độ tin cậy:
 ```
 GitHub Actions (cron hàng ngày)
    └─ fetchAds.js
-        ├─ Meta Ad Library API  → creative + ngày chạy  (mọi ad)
-        └─ Playwright            → like/comment/share    (chỉ ad MỚI, giới hạn số lượng/lần chạy)
+        ├─ Playwright  → scrape facebook.com/ads/library công khai → creative + ngày bắt đầu (mọi ad)
+        └─ Playwright  → like/comment/share (chỉ ad MỚI, giới hạn số lượng/lần chạy)
                 └─ ghi vào Postgres (Supabase/Neon)
 
 Render/Railway (backend Express, read-only API)
@@ -44,7 +73,10 @@ creative của người khác.
 
 ## Các bước triển khai (không cần mua domain)
 
-### Bước 1 — Lấy Meta Access Token
+### Bước 1 — Lấy Meta Access Token (KHÔNG BẮT BUỘC với luồng hiện tại)
+Từ khi chuyển sang scrape trang public (xem mục "CẬP NHẬT QUAN TRỌNG" ở đầu file), bước này
+**không còn cần thiết** để job chạy được — `fetchAds.js` không gọi Graph API nữa. Chỉ làm bước
+này nếu sau này quay lại dùng `metaAdLibrary.js` (ví dụ mở rộng sang EU/UK):
 1. Vào [developers.facebook.com](https://developers.facebook.com) → **My Apps** → **Create App** → chọn loại **Business**.
 2. Sau khi tạo App, vào **Tools > Graph API Explorer**, chọn đúng App vừa tạo, bấm **Generate Access Token**.
 3. Dán token vào biến `META_ACCESS_TOKEN`.

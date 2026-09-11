@@ -1,4 +1,17 @@
+// ⚠️ KHÔNG CÒN ĐƯỢC DÙNG TRONG JOB CHÍNH (fetchAds.js) — giữ lại chỉ để tham khảo/tương lai.
+//
 // Client gọi Meta Ad Library API (Graph API endpoint /ads_archive).
+//
+// LÝ DO NGỪNG DÙNG (xác minh trực tiếp bằng Graph API Explorer thật, không phải suy đoán):
+// Theo tài liệu chính thức facebook.com/ads/library/api, API này CHỈ trả dữ liệu cho (1) quảng
+// cáo chính trị/xã hội ở bất kỳ đâu, hoặc (2) quảng cáo bất kỳ loại nào NHƯNG chỉ nếu phân phối
+// đến EU/UK. Mexico không thuộc EU/UK và mỹ phẩm không phải quảng cáo chính trị — nên với đúng
+// use case của dự án, endpoint này LUÔN trả lỗi permission hoặc rỗng, bất kể app đã được Meta
+// duyệt quyền ads_read hay chưa. Job hiện tại dùng server/src/lib/adLibraryScraper.js (scrape
+// trang public) thay thế — xem cảnh báo rủi ro pháp lý ở đầu file đó trước khi bật lại.
+//
+// File này vẫn hữu ích nếu sau này dự án mở rộng sang thị trường EU/UK, hoặc nếu Meta thay đổi
+// chính sách cho phép Mexico trong tương lai.
 //
 // QUAN TRỌNG — đọc trước khi sửa fields bên dưới:
 // Với quảng cáo THƯƠNG MẠI thông thường (không phải chính trị/xã hội), Meta chỉ trả về

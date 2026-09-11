@@ -6,7 +6,7 @@
 
 import "dotenv/config";
 import { pool } from "../db/pool.js";
-import { searchAds } from "../lib/metaAdLibrary.js";
+import { launchLibraryBrowser, closeLibraryBrowser, scrapeAds } from "../lib/adLibraryScraper.js";
 import { parseEngagement } from "../lib/snapshotParser.js";
 import {
   KEYWORDS,
@@ -14,8 +14,12 @@ import {
   MAX_NEW_ADS_FOR_ENGAGEMENT_PER_RUN,
 } from "../config/keywords.js";
 
-const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
+// LƯU Ý: từ khi chuyển sang scrape trang Ad Library công khai (xem lib/adLibraryScraper.js để
+// biết lý do), META_ACCESS_TOKEN KHÔNG còn được dùng để lấy danh sách ad nữa — không cần Meta
+// App/App Review/identity verification cho bước này. Biến này được giữ lại trong .env/secrets
+// phòng trường hợp sau này quay lại dùng Graph API chính thức (ví dụ nếu mở rộng sang EU/UK).
 const COUNTRY = process.env.META_AD_COUNTRY || "MX";
+const DELAY_BETWEEN_KEYWORDS_MS = 4000; // giãn cách giữa các từ khóa — giảm dấu hiệu truy cập dồn dập
 
 function daysBetween(start, end) {
   if (!start) return null;
@@ -53,7 +57,9 @@ async function upsertAd(client, raw, keyword) {
       raw.publisher_platforms || [],
       startDate ? startDate.slice(0, 10) : null,
       stopDate ? stopDate.slice(0, 10) : null,
-      !stopDate, // is_active = chưa có ngày dừng
+      // is_active: ưu tiên badge Active/Inactive đọc trực tiếp từ trang scrape; nếu không xác
+      // định được (undefined) thì coi như còn hoạt động (mặc định an toàn hơn là đánh rớt nhầm).
+      raw._isActiveHint !== false,
       daysBetween(startDate, stopDate),
       JSON.stringify(raw),
     ]
@@ -62,7 +68,7 @@ async function upsertAd(client, raw, keyword) {
   return { isNew: rows[0]?.is_new === true, adId: raw.id, snapshotUrl: raw.ad_snapshot_url };
 }
 
-async function processKeyword(client, keyword) {
+async function processKeyword(client, page, keyword) {
   const runRes = await client.query(
     `INSERT INTO fetch_runs (keyword, status) VALUES ($1, 'running') RETURNING id`,
     [keyword]
@@ -70,10 +76,9 @@ async function processKeyword(client, keyword) {
   const runId = runRes.rows[0].id;
 
   try {
-    const rawAds = await searchAds(keyword, {
-      accessToken: ACCESS_TOKEN,
+    const rawAds = await scrapeAds(page, keyword, {
       country: COUNTRY,
-      maxPages: MAX_PAGES_PER_KEYWORD,
+      maxScrolls: MAX_PAGES_PER_KEYWORD,
     });
 
     const newAds = [];
@@ -120,19 +125,21 @@ async function processKeyword(client, keyword) {
   }
 }
 
-async function main() {
-  if (!ACCESS_TOKEN) {
-    console.error("[fetchAds] Thiếu META_ACCESS_TOKEN — dừng job (không chạy được gì cả).");
-    process.exitCode = 1;
-    return;
-  }
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
+async function main() {
   const client = await pool.connect();
+  const { browser, page } = await launchLibraryBrowser();
+
   try {
-    for (const keyword of KEYWORDS) {
-      await processKeyword(client, keyword);
+    for (let i = 0; i < KEYWORDS.length; i++) {
+      await processKeyword(client, page, KEYWORDS[i]);
+      if (i < KEYWORDS.length - 1) await sleep(DELAY_BETWEEN_KEYWORDS_MS);
     }
   } finally {
+    await closeLibraryBrowser({ browser });
     client.release();
     await pool.end();
   }
