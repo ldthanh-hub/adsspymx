@@ -510,7 +510,9 @@ export default function Home() {
 
         .content {
           padding: 20px 24px 48px;
-          max-width: 1400px;
+          max-width: 1800px;
+          margin: 0 auto;
+          width: 100%;
         }
 
         .filter-bar {
@@ -536,24 +538,29 @@ export default function Home() {
           gap: 3px;
         }
         .pill-group-label {
-          font-size: 10px;
+          font-size: 9.5px;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.06em;
           font-weight: 700;
           color: #6d6f93;
-          padding: 0 8px 0 6px;
+          padding: 0 10px 0 6px;
+          margin-right: 2px;
           white-space: nowrap;
+          border-right: 1px solid #34355c;
         }
         .pill-toggle button {
           border: none;
           background: transparent;
-          color: #9799b8;
+          color: #d5d6ee;
           font-size: 12px;
           font-weight: 600;
           padding: 7px 10px;
           border-radius: 7px;
           cursor: pointer;
           white-space: nowrap;
+        }
+        .pill-toggle button:hover:not(.active) {
+          background: #2b2c55;
         }
         .pill-toggle button.active {
           background: #6c5ce7;
