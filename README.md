@@ -124,16 +124,27 @@ tìm trực tiếp trên Meta Ad Library. Nếu bạn gõ 1 từ khóa/thương 
 (VD: "Seyoul", hoặc 1 đối thủ mới xuất hiện), ô tìm kiếm sẽ luôn ra 0 kết quả — KHÔNG PHẢI lỗi hay
 do dữ liệu chưa nạp xong. Dùng workflow dưới đây để quét thử 1 lần, không cần sửa code.
 
-**Lưu ý**: không tức thời như search thật — cần vào GitHub thao tác tay, mất khoảng 1-3 phút.
+**Lưu ý**: không tức thời như search thật — cần vào GitHub thao tác tay, mất khoảng 1-3 phút. Đây là
+lựa chọn CHỦ ĐỘNG (không tự động hoàn toàn trong app) — vì backend đang chạy trên Render free tier
+không cài được trình duyệt để tự quét, và không muốn thêm token bảo mật mới chỉ để làm việc đó (xem
+thêm lý do trong `server/src/jobs/fetchOneKeyword.js`).
 
-Các bước:
+**Từ 15/09/2026 — có sẵn trợ giúp ngay trong web**: khi gõ vào ô tìm kiếm mà không ra kết quả, trang
+web tự hiện 1 khung "Không thấy...?" ngay bên dưới, đã điền sẵn từ khóa + tự đoán ngành hàng (dựa vào
+các từ mô tả trong từ khóa, VD gõ "sérum facial" sẽ tự đoán ra "Mỹ phẩm & Làm đẹp" — tên thương hiệu
+không có từ mô tả như "Seyoul" thì để trống, bạn tự chọn) — chỉ cần bấm **"Sao chép thông tin cần
+điền"** rồi **"Mở trang chạy quét trên GitHub"**, dán vào 3 ô của form là xong, đỡ phải tự gõ lại từ
+đầu như hướng dẫn thủ công bên dưới.
+
+Các bước (làm thủ công, hoặc theo khung gợi ý ở trên):
 1. Vào repo trên GitHub → tab **Actions** (thanh trên cùng, cạnh Code/Pull requests).
 2. Ở cột bên trái, chọn workflow tên **"Quét 1 từ khóa theo yêu cầu (thủ công)"**.
-3. Bấm nút **Run workflow** (góc phải, có ô sổ xuống) → điền:
+3. Bấm nút **Run workflow** (góc phải, có ô sổ xuống) → điền (hoặc dán nếu đã bấm "Sao chép" ở web):
    - **keyword**: từ khóa hoặc tên thương hiệu muốn quét (VD: `Seyoul`).
    - **country**: chọn `MX` hoặc `US`.
-   - **category**: để trống nếu không chắc, hoặc chọn 1 trong 3 ngành hàng đang theo dõi (chỉ ảnh
-     hưởng cách hiển thị/phân loại, không ảnh hưởng kết quả quét).
+   - **category**: để trống nếu không chắc — job sẽ TỰ ĐOÁN dựa vào từ khóa (xem
+     `server/src/lib/guessCategory.js`), hoặc chọn tay 1 trong 3 ngành hàng nếu muốn chắc chắn. Chỉ
+     ảnh hưởng cách hiển thị/phân loại, không ảnh hưởng kết quả quét.
 4. Bấm nút xanh **Run workflow** để bắt đầu. Đợi khoảng 1-3 phút, refresh tab Actions tới khi thấy
    dấu ✅ xanh (ID chạy mới nhất, tên "Quét 1 từ khóa theo yêu cầu").
 5. Quay lại web, tải lại trang (F5), gõ lại đúng từ khóa vừa quét vào ô tìm kiếm — nếu Meta Ad

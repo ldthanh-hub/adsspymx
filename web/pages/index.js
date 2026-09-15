@@ -7,6 +7,7 @@ import {
   MARKET_CODES,
   MEDIA_TYPE_LABELS,
   industryLabelVi,
+  guessCategory,
   avatarGradient,
   initials,
   formatRelativeDate,
@@ -17,6 +18,11 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const PAGE_SIZE = 60;
+
+// Link thẳng tới trang chạy workflow "Quét 1 từ khóa theo yêu cầu" trên GitHub — xem README mục
+// cùng tên để có hướng dẫn từng bước. Đổi lại URL này nếu sau này đổi tên/chuyển repo.
+const SCAN_WORKFLOW_URL = "https://github.com/ldthanh-hub/adsspymx/actions/workflows/fetch-oneoff.yml";
+const SCAN_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang", "Đồ gia dụng"];
 
 export default function Home() {
   const router = useRouter();
@@ -35,6 +41,16 @@ export default function Home() {
   const [mediaTypeFilter, setMediaTypeFilter] = useState(""); // "" = tất cả | "video" | "image"
   const [contentSearch, setContentSearch] = useState(""); // tìm trong nội dung quảng cáo (q)
   const debouncedContentSearch = useDebouncedValue(contentSearch, 400);
+
+  // Panel "Yêu cầu quét từ khóa mới" (hiện khi search không ra kết quả) — xem khối JSX phía dưới.
+  const [scanCountry, setScanCountry] = useState(""); // "" = chưa chỉnh tay, dùng countryFilter hiện tại làm mặc định
+  const [scanCategory, setScanCategory] = useState(""); // "" = để hệ thống tự đoán (xem guessCategory)
+  const [copyFeedback, setCopyFeedback] = useState("");
+  // Đổi từ khóa tìm kiếm thì reset lựa chọn ngành hàng đã chỉnh tay — tránh giữ nhầm lựa chọn của
+  // từ khóa CŨ sang từ khóa MỚI (mỗi từ khóa nên tự đoán lại từ đầu, không kế thừa lựa chọn cũ).
+  useEffect(() => {
+    setScanCategory("");
+  }, [contentSearch]);
   const [sortMode, setSortMode] = useState("endurance"); // endurance | newest
 
   const [loading, setLoading] = useState(false);
@@ -357,17 +373,79 @@ export default function Home() {
             <div className="empty-state">
               <p>Không tìm thấy quảng cáo nào khớp bộ lọc hiện tại.</p>
               <p className="muted small">Thử bỏ bớt bộ lọc, hoặc đổi từ khóa/thương hiệu ở thanh bộ lọc phía trên.</p>
-              {contentSearch.trim().length > 0 && (
-                // Ô tìm kiếm chỉ lọc TRONG số quảng cáo đã quét sẵn (xem ghi chú đầu file) — không
-                // tìm trực tiếp trên Meta. Gợi ý hướng xử lý khi search không ra gì, thay vì để
-                // người dùng tưởng nhầm là lỗi/thiếu dữ liệu.
-                <p className="muted small empty-hint">
-                  Không thấy "{contentSearch}"? Có thể từ khóa này CHƯA nằm trong danh sách quét thường xuyên. Bạn có
-                  thể yêu cầu quét thử 1 lần qua GitHub Actions → workflow{" "}
-                  <strong>&quot;Quét 1 từ khóa theo yêu cầu&quot;</strong> (mất khoảng 1-3 phút, xem hướng dẫn trong
-                  README).
-                </p>
-              )}
+              {contentSearch.trim().length > 0 &&
+                (() => {
+                  // Ô tìm kiếm chỉ lọc TRONG số quảng cáo đã quét sẵn (xem ghi chú đầu file) — không
+                  // tìm trực tiếp trên Meta. Panel này KHÔNG tự quét được (backend chỉ đọc, xem
+                  // README) — chỉ chuẩn bị sẵn 3 giá trị (từ khóa/thị trường/ngành hàng, có tự đoán
+                  // ngành hàng) để dán nhanh vào form "Run workflow" trên GitHub, đỡ phải tự gõ tay.
+                  const guessed = guessCategory(contentSearch);
+                  const effectiveCountry = scanCountry || countryFilter || "MX";
+                  const effectiveCategory = scanCategory || guessed || "";
+                  const copyText = `Từ khóa: ${contentSearch.trim()}\nThị trường: ${effectiveCountry}\nNgành hàng: ${
+                    effectiveCategory || "(để trống — hệ thống sẽ tự đoán)"
+                  }`;
+                  return (
+                    <div className="scan-request">
+                      <p className="muted small">
+                        Không thấy &quot;{contentSearch}&quot;? Có thể từ khóa này CHƯA nằm trong danh sách quét
+                        thường xuyên. Chuẩn bị sẵn thông tin bên dưới rồi qua GitHub chạy thử (mất khoảng 1-3 phút):
+                      </p>
+                      <div className="scan-request-fields">
+                        <label>
+                          Thị trường
+                          <select value={effectiveCountry} onChange={(e) => setScanCountry(e.target.value)}>
+                            {MARKET_CODES.map((code) => (
+                              <option key={code} value={code}>
+                                {MARKET_LABELS[code]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Ngành hàng {guessed && !scanCategory && <span className="scan-guess-tag">tự đoán</span>}
+                          <select value={scanCategory} onChange={(e) => setScanCategory(e.target.value)}>
+                            <option value="">
+                              {guessed ? `Để hệ thống tự đoán (gợi ý: ${guessed})` : "Chưa xác định — để trống"}
+                            </option>
+                            {SCAN_CATEGORIES.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="scan-request-actions">
+                        <button
+                          type="button"
+                          className="btn-scan-copy"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(copyText);
+                              setCopyFeedback("Đã sao chép — dán vào form trên GitHub.");
+                            } catch {
+                              setCopyFeedback("Không sao chép tự động được — tự gõ theo 3 dòng bên dưới nút.");
+                            }
+                            setTimeout(() => setCopyFeedback(""), 4000);
+                          }}
+                        >
+                          Sao chép thông tin cần điền
+                        </button>
+                        <a
+                          href={SCAN_WORKFLOW_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-scan-open"
+                        >
+                          Mở trang chạy quét trên GitHub ↗
+                        </a>
+                      </div>
+                      {copyFeedback && <p className="scan-copy-feedback">{copyFeedback}</p>}
+                      <pre className="scan-copy-preview">{copyText}</pre>
+                    </div>
+                  );
+                })()}
             </div>
           )}
 
@@ -996,10 +1074,106 @@ export default function Home() {
           padding: 48px 20px;
           text-align: center;
         }
-        .empty-hint {
-          max-width: 480px;
-          margin: 14px auto 0;
+        .scan-request {
+          max-width: 420px;
+          margin: 18px auto 0;
+          text-align: left;
+          background: #f7f7fc;
+          border: 1px solid #ebecf5;
+          border-radius: 12px;
+          padding: 16px 18px;
+        }
+        .scan-request > p {
+          margin: 0 0 12px;
           line-height: 1.5;
+        }
+        .scan-request-fields {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+        .scan-request-fields label {
+          flex: 1;
+          min-width: 150px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          font-size: 11px;
+          font-weight: 700;
+          color: #6d6f93;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .scan-request-fields select {
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 500;
+          color: #1c1d2b;
+          text-transform: none;
+          letter-spacing: normal;
+          padding: 8px 9px;
+          border-radius: 8px;
+          border: 1px solid #d9dbe9;
+          background: #fff;
+        }
+        .scan-guess-tag {
+          background: #ded9ff;
+          color: #4c3fb5;
+          border-radius: 20px;
+          padding: 1px 7px;
+          font-size: 9.5px;
+          text-transform: none;
+          letter-spacing: normal;
+          font-weight: 700;
+        }
+        .scan-request-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .btn-scan-copy,
+        .btn-scan-open {
+          font-size: 12.5px;
+          font-weight: 700;
+          border-radius: 8px;
+          padding: 9px 12px;
+          cursor: pointer;
+          text-decoration: none;
+          text-align: center;
+          border: none;
+        }
+        .btn-scan-copy {
+          background: #6c5ce7;
+          color: #fff;
+        }
+        .btn-scan-copy:hover {
+          background: #5b4bd6;
+        }
+        .btn-scan-open {
+          background: #fff;
+          color: #6c5ce7;
+          border: 1px solid #d9d3ff;
+        }
+        .btn-scan-open:hover {
+          background: #f2effe;
+        }
+        .scan-copy-feedback {
+          margin: 10px 0 0;
+          font-size: 11.5px;
+          color: #00b894;
+          font-weight: 600;
+        }
+        .scan-copy-preview {
+          margin: 12px 0 0;
+          background: #1e1f3a;
+          color: #c6c7e0;
+          border-radius: 8px;
+          padding: 10px 12px;
+          font-size: 11px;
+          line-height: 1.6;
+          white-space: pre-wrap;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
 
         .footnote {

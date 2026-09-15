@@ -18,6 +18,7 @@ import "dotenv/config";
 import { pool } from "../db/pool.js";
 import { launchLibraryBrowser, closeLibraryBrowser } from "../lib/adLibraryScraper.js";
 import { processKeyword } from "./scanKeyword.js";
+import { guessCategory } from "../lib/guessCategory.js";
 
 const VALID_COUNTRIES = ["MX", "US"];
 const VALID_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang", "Đồ gia dụng"];
@@ -26,7 +27,10 @@ async function main() {
   const keyword = (process.env.SCAN_KEYWORD || "").trim();
   const countryCode = (process.env.SCAN_COUNTRY || "").trim().toUpperCase();
   const categoryRaw = (process.env.SCAN_CATEGORY || "").trim();
-  const category = VALID_CATEGORIES.includes(categoryRaw) ? categoryRaw : null;
+  // Nếu người chạy workflow để trống ô "category" (hoặc gõ giá trị không hợp lệ), TỰ ĐOÁN thay vì
+  // bắt buộc phải tự chọn tay — xem lib/guessCategory.js. Vẫn có thể đoán ra null (không chắc), khi
+  // đó ad được lưu với category = NULL, không sao — chỉ ảnh hưởng hiển thị/lọc, không mất dữ liệu.
+  const category = VALID_CATEGORIES.includes(categoryRaw) ? categoryRaw : guessCategory(keyword);
 
   if (!keyword) {
     throw new Error('Thiếu từ khóa (SCAN_KEYWORD trống) — điền vào ô "keyword" khi bấm Run workflow.');

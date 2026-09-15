@@ -41,6 +41,55 @@ export function industryLabelVi(keyword) {
   return INDUSTRY_LABELS_VI[keyword] || keyword;
 }
 
+// Đoán ngành hàng cho 1 từ khóa CHƯA quét (dùng ở panel "Yêu cầu quét từ khóa mới" khi search
+// không ra kết quả) — CÙNG logic với server/src/lib/guessCategory.js, để giao diện gợi ý ra đúng
+// giá trị mà job quét (fetchOneKeyword.js) cũng sẽ tự đoán nếu để trống. 2 nơi PHẢI đồng bộ danh
+// sách từ khóa — sửa 1 bên thì nhớ sửa bên kia. Chỉ là heuristic so chuỗi con, không chính xác 100%
+// (đặc biệt với tên thương hiệu không chứa từ mô tả ngành, VD "Kosas" sẽ không đoán ra được).
+const CATEGORY_GUESS_RULES = [
+  {
+    category: "Mỹ phẩm & Làm đẹp",
+    terms: [
+      "skincare", "skin care", "makeup", "make up", "maquillaje", "cosmetic", "cosmetico", "cosmético",
+      "belleza", "beauty", "piel", "serum", "sérum", "crema", "cream", "sunscreen", "protector solar",
+      "perfume", "fragrance", "fragancia", "lipstick", "labial", "retinol", "vitamin c",
+    ],
+  },
+  {
+    category: "Thời trang",
+    terms: [
+      "fashion", "moda", "ropa", "clothing", "apparel", "zapato", "shoe", "sneaker", "tenis", "dress",
+      "vestido", "bag", "bolsa", "jewelry", "joyeria", "joyería", "accesorio", "accessory", "wear",
+    ],
+  },
+  {
+    category: "Đồ gia dụng",
+    terms: [
+      "home", "hogar", "decor", "decoracion", "decoración", "furniture", "mueble", "kitchen", "cocina",
+      "bedding", "sabana", "sábana", "pillow", "almohada", "sofa", "sofá", "rug", "tapete", "lamp",
+      "lámpara", "cookware",
+    ],
+  },
+];
+
+function normalizeForGuess(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+export function guessCategory(keyword) {
+  const norm = normalizeForGuess(keyword);
+  if (!norm) return null;
+  for (const rule of CATEGORY_GUESS_RULES) {
+    if (rule.terms.some((term) => norm.includes(normalizeForGuess(term)))) {
+      return rule.category;
+    }
+  }
+  return null;
+}
+
 // TRƯỚC ĐÂY: phân loại "ngành hàng" vs "thương hiệu" bằng cách so chuỗi tên keyword với 1 Set cố
 // định ở đây — dễ vỡ mỗi khi thêm ngành mới ở server (phải nhớ sửa cả 2 nơi). TỪ 11/09/2026: server
 // trả thẳng field "type" ("industry"/"brand") theo từng keyword qua /api/keywords (gắn cứng từ
