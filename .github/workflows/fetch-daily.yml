@@ -1,4 +1,4 @@
-name: Fetch Meta Ad Library (Mexico) hàng ngày
+name: Fetch Meta Ad Library (đa thị trường) hàng ngày
 
 on:
   schedule:
@@ -31,9 +31,8 @@ jobs:
       - name: Cài Chromium cho Playwright
         run: npx playwright install --with-deps chromium
 
-      - name: Chạy job fetch
+      - name: Chạy job fetch (tự lặp qua toàn bộ thị trường khai báo trong config/keywords.js)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
-          META_AD_COUNTRY: MX
         run: npm run fetch
