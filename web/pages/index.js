@@ -179,13 +179,19 @@ export default function Home() {
     return formatRelativeDate(max);
   }, [ads]);
 
-  const industryItems = keywordStats.filter((k) => k.type === "industry");
+  // Chỉ hiển thị các ngành hàng đang THEO DÕI (SCAN_CATEGORIES) trong bộ lọc "Ngành hàng" — lọc bỏ
+  // những category đã gỡ khỏi keywords.js (VD "Đồ gia dụng") nhưng vẫn còn thấy ở đây vì ads CŨ quét
+  // trước đó chưa bị xoá khỏi DB (gỡ khỏi danh sách theo dõi chỉ ngừng quét thêm, không xoá dữ liệu
+  // đã có — xem ghi chú trong config/keywords.js). Đây là lọc HIỂN THỊ thuần frontend, không cần
+  // chạy lại workflow quét nào để thấy hiệu lực — ads "Đồ gia dụng" cũ (nếu có) vẫn xem được bình
+  // thường qua bộ lọc Thương hiệu/tìm kiếm nội dung, chỉ không còn là 1 lựa chọn trong "Ngành hàng".
+  const ACTIVE_INDUSTRY_CATEGORIES = new Set(SCAN_CATEGORIES);
+  const industryItems = keywordStats.filter((k) => k.type === "industry" && ACTIVE_INDUSTRY_CATEGORIES.has(k.category));
 
   // Nhóm các từ khóa ngành hàng theo category để hiển thị có sub-header trong dropdown "Ngành hàng"
   // (trước đây hiển thị 1 danh sách phẳng, khó phân biệt từ khóa nào thuộc ngành nào khi số lượng
-  // từ khóa tăng lên sau khi thêm nhiều thị trường). Nhóm nào không xác định được category (dữ liệu
-  // cũ/lỗi) rơi vào nhóm "Khác", luôn hiển thị cuối cùng. Trong mỗi nhóm vẫn sắp xếp theo total giảm
-  // dần (industryItems đã được server trả về ORDER BY total DESC).
+  // từ khóa tăng lên sau khi thêm nhiều thị trường). Trong mỗi nhóm vẫn sắp xếp theo total giảm dần
+  // (industryItems đã được server trả về ORDER BY total DESC).
   const industryGroups = useMemo(() => {
     const groups = new Map();
     for (const k of industryItems) {
@@ -241,17 +247,23 @@ export default function Home() {
     >
       <main className="content">
         <div className="filter-bar">
-          <div className="pill-toggle">
-            <span className="pill-group-label">Thị trường</span>
-            <button className={countryFilter === "" ? "active" : ""} onClick={() => setCountryFilter("")}>
-              Tất cả
-            </button>
-            {MARKET_CODES.map((code) => (
-              <button key={code} className={countryFilter === code ? "active" : ""} onClick={() => setCountryFilter(code)}>
-                {MARKET_LABELS[code]}
+          <Dropdown label="Thị trường" count={countryFilter ? 1 : 0} width={200}>
+            <div className="dd-list">
+              <button type="button" className={`dd-radio-row ${countryFilter === "" ? "active" : ""}`} onClick={() => setCountryFilter("")}>
+                Tất cả
               </button>
-            ))}
-          </div>
+              {MARKET_CODES.map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  className={`dd-radio-row ${countryFilter === code ? "active" : ""}`}
+                  onClick={() => setCountryFilter(code)}
+                >
+                  {MARKET_LABELS[code]}
+                </button>
+              ))}
+            </div>
+          </Dropdown>
 
           <div className="pill-toggle">
             <span className="pill-group-label">Trạng thái</span>
@@ -732,6 +744,28 @@ export default function Home() {
           letter-spacing: 0.03em;
           color: #b3b5cc;
           padding: 2px 8px 4px;
+        }
+
+        .dd-radio-row {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          background: transparent;
+          border: none;
+          color: #4c4e63;
+          font-size: 13px;
+          padding: 8px 10px;
+          border-radius: 8px;
+          cursor: pointer;
+          text-align: left;
+        }
+        .dd-radio-row:hover {
+          background: #f4f5fa;
+        }
+        .dd-radio-row.active {
+          background: #f1effd;
+          color: #1c1d2b;
+          font-weight: 600;
         }
 
         .brand-filter-input {
