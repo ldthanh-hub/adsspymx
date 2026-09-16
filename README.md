@@ -1,6 +1,9 @@
-# MX Ad Spy — MVP theo dõi quảng cáo Facebook/Instagram tại Mexico
+# MX Ad Spy — MVP theo dõi quảng cáo Facebook/Instagram đa thị trường
 
-Công cụ nội bộ, quy mô nhỏ, dùng để hỗ trợ nghiên cứu creative đối thủ tại thị trường Mexico.
+Công cụ nội bộ, quy mô nhỏ, dùng để hỗ trợ nghiên cứu creative đối thủ. Bắt đầu từ thị trường Mexico,
+từ 16/09/2026 mở rộng thêm Mỹ, Hàn Quốc, Thái Lan, Malaysia (danh sách đầy đủ nằm trong `MARKETS` ở
+`server/src/config/keywords.js` — thêm/bớt thị trường chỉ cần sửa đúng 1 file này, xem ghi chú trong
+file).
 
 ## ⚠️ CẬP NHẬT QUAN TRỌNG — đổi nguồn dữ liệu (đọc trước khi làm gì khác)
 
@@ -116,6 +119,16 @@ này nếu sau này quay lại dùng `metaAdLibrary.js` (ví dụ mở rộng sa
 3. Vào tab **Actions**, chạy thử workflow bằng nút **Run workflow** (workflow_dispatch) — **BẮT BUỘC chạy thử tay trước**, kiểm tra log không lỗi, kiểm tra bảng `ads` trong Supabase có dữ liệu hợp lệ, TRƯỚC KHI để lịch tự động chạy hàng ngày.
 4. Sau khi chạy thử ổn, lịch cron (7h sáng giờ Mexico City) sẽ tự chạy mỗi ngày.
 
+**Về thời gian chạy sau khi thêm Hàn Quốc/Thái Lan/Malaysia (16/09/2026)**: tổng số lượt quét (quốc
+gia × từ khóa/thương hiệu) hiện tại là ~124 lượt (MX 48, US 30, KR 15, TH 15, MY 16) — tăng so với
+~95 lượt trước đó (chỉ MX/US). Job chạy tuần tự, giãn cách 4 giây/lượt
+(`DELAY_BETWEEN_KEYWORDS_MS` trong `fetchAds.js`) cộng thêm thời gian scrape thật mỗi lượt (biến động
+theo tải Meta lúc đó) — ước tính RUNTIME TỔNG sẽ tăng tương ứng theo tỷ lệ số lượt (~30%). Số phút
+CHÍNH XÁC chỉ biết được sau khi xem log thời gian thực tế ở tab **Actions** (mỗi lần chạy đều ghi rõ
+thời gian bắt đầu/kết thúc) — nếu vượt quá giới hạn 6 giờ/lần chạy của GitHub Actions free tier (rất
+khó xảy ra ở quy mô này) hoặc job bắt đầu timeout, đó là dấu hiệu cần giảm `MAX_PAGES_PER_KEYWORD`
+hoặc tách job theo thị trường thay vì chạy gộp 1 lần.
+
 ## Quét 1 từ khóa theo yêu cầu (khi tìm không ra kết quả)
 
 **Vì sao cần tính năng này**: ô tìm kiếm trên web chỉ lọc TRONG số quảng cáo đã quét sẵn từ danh
@@ -141,10 +154,11 @@ Các bước (làm thủ công, hoặc theo khung gợi ý ở trên):
 2. Ở cột bên trái, chọn workflow tên **"Quét 1 từ khóa theo yêu cầu (thủ công)"**.
 3. Bấm nút **Run workflow** (góc phải, có ô sổ xuống) → điền (hoặc dán nếu đã bấm "Sao chép" ở web):
    - **keyword**: từ khóa hoặc tên thương hiệu muốn quét (VD: `Seyoul`).
-   - **country**: chọn `MX` hoặc `US`.
+   - **country**: chọn 1 trong 5 thị trường đang theo dõi (`MX`, `US`, `KR`, `TH`, `MY`).
    - **category**: để trống nếu không chắc — job sẽ TỰ ĐOÁN dựa vào từ khóa (xem
-     `server/src/lib/guessCategory.js`), hoặc chọn tay 1 trong 3 ngành hàng nếu muốn chắc chắn. Chỉ
-     ảnh hưởng cách hiển thị/phân loại, không ảnh hưởng kết quả quét.
+     `server/src/lib/guessCategory.js`, có hỗ trợ nhận diện cả từ khóa tiếng Hàn/Thái/Malay), hoặc
+     chọn tay 1 trong 2 ngành hàng (Mỹ phẩm & Làm đẹp / Thời trang) nếu muốn chắc chắn. Chỉ ảnh hưởng
+     cách hiển thị/phân loại, không ảnh hưởng kết quả quét.
 4. Bấm nút xanh **Run workflow** để bắt đầu. Đợi khoảng 1-3 phút, refresh tab Actions tới khi thấy
    dấu ✅ xanh (ID chạy mới nhất, tên "Quét 1 từ khóa theo yêu cầu").
 5. Quay lại web, tải lại trang (F5), gõ lại đúng từ khóa vừa quét vào ô tìm kiếm — nếu Meta Ad

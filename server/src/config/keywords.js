@@ -13,22 +13,29 @@
 // pháp lý ở đầu adLibraryScraper.js) tăng theo dù vẫn ở mức thấp. Cân nhắc kỹ trước khi thêm ồ ạt.
 //
 // NGUỒN THAM KHẢO khi tổng hợp danh sách thương hiệu (11/09/2026 — Mexico mỹ phẩm: Statista, Merca20,
-// Kokomi Skincare, Quien.com; US mỹ phẩm/thời trang/gia dụng: ringly.io (danh sách DTC theo ngành);
-// MX thời trang: abito.com.mx; MX đồ gia dụng: oaxacacapital.com (marcas mexicanas de muebles DTC) —
-// ưu tiên brand ĐỘC LẬP/DTC quy mô vừa-nhỏ (đáng học hỏi creative nhất vì cùng tầm ngân sách), có
-// thêm 1 nhóm nhỏ brand lớn quốc tế để benchmark. KHÔNG bịa tên thương hiệu — toàn bộ tên dưới đây
-// đều tra cứu được thật từ nguồn nêu trên.
+// Kokomi Skincare, Quien.com; US mỹ phẩm/thời trang: ringly.io (danh sách DTC theo ngành); MX thời
+// trang: abito.com.mx — ưu tiên brand ĐỘC LẬP/DTC quy mô vừa-nhỏ (đáng học hỏi creative nhất vì cùng
+// tầm ngân sách), có thêm 1 nhóm nhỏ brand lớn quốc tế để benchmark. KHÔNG bịa tên thương hiệu — toàn
+// bộ tên dưới đây đều tra cứu được thật từ nguồn nêu trên.
 //
-// MỞ RỘNG LẦN 2 (11/09/2026 — theo yêu cầu "tìm kiếm khá hạn chế, thiếu nhiều từ khóa/brand"):
-// +29 mục mới (MX 39→53, US 29→44, tổng 68→97) gồm: (1) thêm cụm tìm kiếm ngách cụ thể hơn cho mỗi
-// ngành — VD "sérum facial"/"vitamin c serum" thay vì chỉ dùng từ rộng như "cuidado de la piel"/
-// "skincare" — vì mỗi cụm tìm kiếm khác nhau thường kéo về MỘT TẬP quảng cáo/nhà quảng cáo khác
-// nhau trên Meta Ad Library (không phải tập con của nhau); (2) thêm thương hiệu mới tra cứu từ
-// kokomiskincare.com, revistacodigo.com, blog.simca.mx, ringly.io (danh sách "Best DTC Home Brands
-// 2026"), glossy.co; (3) thêm "Seyoul" (thương hiệu của chính bạn) để theo dõi quảng cáo của mình +
-// phát hiện sớm nếu bị sao chép nội dung. Việc mở rộng này KHÔNG giải quyết được yêu cầu "gõ bất kỳ
-// từ khóa nào cũng ra kết quả" — xem tính năng "Quét từ khóa mới theo yêu cầu" (README, mục riêng)
-// cho nhu cầu đó; đây chỉ là mở rộng TẬP TỪ KHÓA THEO DÕI THƯỜNG XUYÊN.
+// MỞ RỘNG LẦN 2 (11/09/2026): thêm cụm tìm kiếm ngách cụ thể hơn cho mỗi ngành (VD "sérum facial"/
+// "vitamin c serum" thay vì chỉ dùng từ rộng như "cuidado de la piel"/"skincare") vì mỗi cụm tìm kiếm
+// khác nhau thường kéo về MỘT TẬP quảng cáo/nhà quảng cáo khác nhau trên Meta Ad Library (không phải
+// tập con của nhau); thêm "Seyoul" để tự theo dõi quảng cáo của chính mình.
+//
+// MỞ RỘNG LẦN 3 (16/09/2026 — theo yêu cầu người dùng):
+// (1) BỎ HẲN ngành "Đồ gia dụng" khỏi toàn bộ danh sách (MX, US) và không thêm cho thị trường mới —
+//     KHÔNG xóa dữ liệu ad đã quét trước đó khỏi database (vẫn còn nguyên, chỉ không quét thêm nữa);
+//     đồng thời đã gỡ "Đồ gia dụng" khỏi danh sách category hợp lệ ở server/src/jobs/fetchOneKeyword.js,
+//     web/pages/index.js (SCAN_CATEGORIES) và cả 2 bản guessCategory (server + web).
+// (2) Thêm 3 thị trường mới: Hàn Quốc (KR), Thái Lan (TH), Malaysia (MY) — chỉ 2 ngành Mỹ phẩm & Làm
+//     đẹp + Thời trang (đồng bộ với việc bỏ Đồ gia dụng). Nguồn thương hiệu: tatlerasia.com (thời
+//     trang Thái Lan/Malaysia + mỹ phẩm Thái Lan), buro247.my (mỹ phẩm Malaysia), growyourclothingbrand.com
+//     (thời trang Malaysia), russh.com (thời trang Hàn Quốc, ưu tiên brand DTC độc lập). Từ khóa NGÀNH
+//     HÀNG (industry) dùng ĐÚNG NGÔN NGỮ BẢN ĐỊA (Hàn/Thái/Mã Lai) — vì quảng cáo thật ở các thị trường
+//     này chủ yếu viết bằng ngôn ngữ đó, dùng từ khóa tiếng Anh sẽ bỏ sót phần lớn quảng cáo. Các từ
+//     khóa ngành hàng (skincare/cosmetics/makeup/women's fashion/men's clothing dịch sang từng ngôn
+//     ngữ) là kiến thức ngôn ngữ phổ thông, không tra cứu qua nguồn báo chí như tên thương hiệu.
 
 export const MARKETS = {
   MX: {
@@ -85,7 +92,7 @@ export const MARKETS = {
       { keyword: "Avon", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "M.A.C Cosmetics", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
 
-      // --- Thời trang — ngành hàng (mới, 11/09/2026) ---
+      // --- Thời trang — ngành hàng ---
       { keyword: "moda mujer", type: "industry", category: "Thời trang" },
       { keyword: "ropa mujer", type: "industry", category: "Thời trang" },
       { keyword: "zapatos mujer", type: "industry", category: "Thời trang" },
@@ -100,15 +107,6 @@ export const MARKETS = {
       // Thêm 11/09/2026 — nguồn: revistacodigo.com ("10 tiendas de moda independientes en México")
       { keyword: "Mal de Amores joyería", type: "brand", category: "Thời trang" }, // thêm "joyería" vì "Mal de Amores" trùng tên nhiều bài hát/phim, cần thu hẹp
       { keyword: "Sandra Weil", type: "brand", category: "Thời trang" },
-
-      // --- Đồ gia dụng — ngành hàng (mới, 11/09/2026) ---
-      { keyword: "artículos para el hogar", type: "industry", category: "Đồ gia dụng" },
-      { keyword: "decoración del hogar", type: "industry", category: "Đồ gia dụng" },
-      { keyword: "decoración de interiores", type: "industry", category: "Đồ gia dụng" }, // thêm 11/09/2026
-
-      // --- Đồ gia dụng — thương hiệu Mexico DTC (nguồn: oaxacacapital.com, blog.simca.mx) ---
-      { keyword: "Mi Sofá", type: "brand", category: "Đồ gia dụng" },
-      { keyword: "Candor Home", type: "brand", category: "Đồ gia dụng" }, // thêm 11/09/2026
 
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],
@@ -159,22 +157,107 @@ export const MARKETS = {
       { keyword: "Cuyana", type: "brand", category: "Thời trang" }, // thêm 11/09/2026, nguồn: glossy.co
       { keyword: "Faherty Brand", type: "brand", category: "Thời trang" }, // thêm "Brand" tránh trùng tên riêng "Faherty"; nguồn: glossy.co
 
-      // --- Đồ gia dụng — ngành hàng ---
-      { keyword: "home decor", type: "industry", category: "Đồ gia dụng" },
-      { keyword: "kitchen gadgets", type: "industry", category: "Đồ gia dụng" },
-      { keyword: "bedding set", type: "industry", category: "Đồ gia dụng" }, // thêm 11/09/2026
-      { keyword: "throw pillows", type: "industry", category: "Đồ gia dụng" }, // thêm 11/09/2026
+      // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
+    ],
+  },
 
-      // --- Đồ gia dụng — thương hiệu DTC (nguồn: ringly.io) ---
-      { keyword: "Brooklinen", type: "brand", category: "Đồ gia dụng" },
-      { keyword: "Our Place cookware", type: "brand", category: "Đồ gia dụng" }, // thêm "cookware" để tránh trùng tên địa danh/brand khác tên "Our Place"
-      { keyword: "Caraway Home", type: "brand", category: "Đồ gia dụng" },
-      { keyword: "Article furniture", type: "brand", category: "Đồ gia dụng" },
-      { keyword: "Burrow furniture", type: "brand", category: "Đồ gia dụng" },
-      { keyword: "Parachute Home", type: "brand", category: "Đồ gia dụng" }, // thêm 11/09/2026, nguồn: ringly.io
-      { keyword: "Boll & Branch", type: "brand", category: "Đồ gia dụng" }, // thêm 11/09/2026, nguồn: ringly.io
-      { keyword: "The Citizenry", type: "brand", category: "Đồ gia dụng" }, // thêm 11/09/2026, nguồn: ringly.io
-      { keyword: "Floyd furniture", type: "brand", category: "Đồ gia dụng" }, // thêm "furniture" tránh trùng tên riêng "Floyd"; nguồn: ringly.io
+  KR: {
+    label: "Hàn Quốc",
+    metaCountryCode: "KR",
+    items: [
+      // --- Mỹ phẩm & Làm đẹp — ngành hàng (tiếng Hàn, vì quảng cáo thật đa số viết tiếng Hàn) ---
+      { keyword: "스킨케어", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "skincare"
+      { keyword: "화장품", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "mỹ phẩm/cosmetics"
+      { keyword: "메이크업", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "makeup"
+
+      // --- Mỹ phẩm & Làm đẹp — thương hiệu K-beauty phổ biến (benchmark — tìm kiếm không ra brand
+      // DTC/indie nào có nguồn báo chí đủ rõ ràng, nên dùng nhóm thương hiệu lớn/phổ biến đã xác
+      // minh thật, nguồn: Wikipedia) ---
+      { keyword: "Innisfree", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Nature Republic", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Skin Food", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Mamonde", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+
+      // --- Thời trang — ngành hàng (tiếng Hàn) ---
+      { keyword: "여성 패션", type: "industry", category: "Thời trang" }, // "women's fashion"
+      { keyword: "남성 의류", type: "industry", category: "Thời trang" }, // "men's clothing"
+
+      // --- Thời trang — thương hiệu DTC độc lập (nguồn: russh.com, "31 of the best Korean fashion
+      // brands to shop in 2026" — bài viết nhấn mạnh đây là các label độc lập/DTC quy mô vừa) ---
+      { keyword: "Ader Error", type: "brand", category: "Thời trang" },
+      { keyword: "We11done", type: "brand", category: "Thời trang" },
+      { keyword: "MatinKim", type: "brand", category: "Thời trang" },
+      { keyword: "Dunst clothing", type: "brand", category: "Thời trang" }, // thêm "clothing" tránh trùng tên riêng "Dunst" (VD diễn viên Kirsten Dunst)
+      { keyword: "Marge Sherwood", type: "brand", category: "Thời trang" },
+      { keyword: "Andersson Bell", type: "brand", category: "Thời trang" },
+
+      // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
+    ],
+  },
+
+  TH: {
+    label: "Thái Lan",
+    metaCountryCode: "TH",
+    items: [
+      // --- Mỹ phẩm & Làm đẹp — ngành hàng (tiếng Thái) ---
+      { keyword: "สกินแคร์", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "skincare"
+      { keyword: "เครื่องสำอาง", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "mỹ phẩm/cosmetics"
+      { keyword: "แต่งหน้า", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "trang điểm/makeup"
+
+      // --- Mỹ phẩm & Làm đẹp — thương hiệu DTC độc lập (nguồn: tatlerasia.com, "15 Thai beauty
+      // brands to know in 2026") ---
+      { keyword: "Baby Bright", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Gravich", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Fyne beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" }, // thêm "beauty" tránh trùng tên riêng "Fyne" (VD địa danh/rượu whisky Loch Fyne)
+      { keyword: "Dr Pong", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Rati skincare", type: "brand", category: "Mỹ phẩm & Làm đẹp" }, // thêm "skincare" tránh trùng tên riêng "Rati" (tên nữ thần trong thần thoại Hindu)
+      { keyword: "Jux beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" }, // thêm "beauty" tránh trùng từ viết tắt "Jux" ở ngành khác
+
+      // --- Thời trang — ngành hàng (tiếng Thái) ---
+      { keyword: "แฟชั่นผู้หญิง", type: "industry", category: "Thời trang" }, // "women's fashion"
+      { keyword: "เสื้อผ้าผู้ชาย", type: "industry", category: "Thời trang" }, // "men's clothing"
+
+      // --- Thời trang — thương hiệu DTC (nguồn: tatlerasia.com, "2026 guide to Southeast Asian
+      // fashion brands") ---
+      { keyword: "Gentlewoman Bangkok", type: "brand", category: "Thời trang" }, // thêm "Bangkok" tránh trùng nghĩa gốc "gentlewoman"
+      { keyword: "Disaya", type: "brand", category: "Thời trang" },
+      { keyword: "Kloset fashion", type: "brand", category: "Thời trang" }, // thêm "fashion" tránh trùng từ thông dụng "kloset"/"closet"
+      { keyword: "Mitr clothing", type: "brand", category: "Thời trang" }, // thêm "clothing" tránh trùng từ ngắn dễ nhầm
+
+      // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
+    ],
+  },
+
+  MY: {
+    label: "Malaysia",
+    metaCountryCode: "MY",
+    items: [
+      // --- Mỹ phẩm & Làm đẹp — ngành hàng (tiếng Mã Lai — quảng cáo tại Malaysia thường pha trộn
+      // Mã Lai/Anh, riêng "kosmetik"/"mekap" là từ mượn quen dùng trong tiếng Mã Lai đời thường) ---
+      { keyword: "penjagaan kulit", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "chăm sóc da/skincare"
+      { keyword: "kosmetik", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "mỹ phẩm/cosmetics"
+      { keyword: "mekap", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "trang điểm/makeup"
+
+      // --- Mỹ phẩm & Làm đẹp — thương hiệu DTC độc lập (nguồn: buro247.my, "18 Malaysian Skincare
+      // Brands Every Beauty Lover Should Know") ---
+      { keyword: "Lumi Beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Handmade Heroes", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Chandra Skin", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "The Mineraw", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Cuura", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Meizlab", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+
+      // --- Thời trang — ngành hàng (tiếng Mã Lai) ---
+      { keyword: "fesyen wanita", type: "industry", category: "Thời trang" }, // "women's fashion"
+      { keyword: "pakaian lelaki", type: "industry", category: "Thời trang" }, // "men's clothing"
+
+      // --- Thời trang — thương hiệu Malaysia (nguồn: growyourclothingbrand.com, "12 Malaysian
+      // Clothing Brands Worth Knowing (2026)") ---
+      { keyword: "Naelofar", type: "brand", category: "Thời trang" },
+      { keyword: "Poplook", type: "brand", category: "Thời trang" },
+      { keyword: "Pestle & Mortar Clothing", type: "brand", category: "Thời trang" }, // thêm "Clothing" — "Pestle & Mortar" trùng tên dụng cụ bếp (cối chày), rất dễ lẫn với nội dung nấu ăn
+      { keyword: "Christy Ng", type: "brand", category: "Thời trang" },
+      { keyword: "TNTCO", type: "brand", category: "Thời trang" },
 
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],
@@ -184,11 +267,16 @@ export const MARKETS = {
 // GHI CHÚ CHO LẦN CẬP NHẬT SAU:
 // - Đã CHỦ ĐỘNG bỏ qua các brand có tên chung chung dễ trùng với từ khóa khác (VD "Yuya" — trùng
 //   tên riêng phổ biến) — nếu muốn thêm, nên ghép thêm hậu tố để thu hẹp (xem ví dụ "Caruso Yucatán",
-//   "Our Place cookware" ở trên).
+//   "Our Place cookware", "Pestle & Mortar Clothing" ở trên).
 // - Nếu job bắt đầu chạy quá lâu (xem thời gian chạy thực tế trong tab Actions trên GitHub), cân
 //   nhắc giảm MAX_PAGES_PER_KEYWORD xuống 3-4 thay vì cắt bớt từ khóa, để vẫn giữ độ phủ thương hiệu.
 // - Muốn thêm quốc gia mới: thêm 1 key mới vào MARKETS (VD "CO": { label, metaCountryCode, items }),
-//   không cần sửa gì khác trong code — fetchAds.js, server.js, giao diện đều tự đọc theo MARKETS.
+//   không cần sửa gì khác trong code — fetchAds.js, server.js, giao diện đều tự đọc theo MARKETS. Ưu
+//   tiên viết từ khóa NGÀNH HÀNG bằng ngôn ngữ bản địa của thị trường đó (xem KR/TH/MY ở trên) — quảng
+//   cáo thật viết bằng ngôn ngữ gì thì từ khóa tìm kiếm nên dùng đúng ngôn ngữ đó mới bắt được nhiều.
+// - "Đồ gia dụng" đã bị GỠ HẲN khỏi danh sách (16/09/2026) — nếu sau này muốn thêm lại, nhớ cập nhật
+//   ĐỒNG BỘ cả 4 chỗ khác: server/src/jobs/fetchOneKeyword.js (VALID_CATEGORIES), web/pages/index.js
+//   (SCAN_CATEGORIES), server/src/lib/guessCategory.js và web/lib/ui.js (guessCategory).
 
 // Giới hạn số lần cuộn trang tối đa lấy về mỗi từ khóa/thương hiệu/quốc gia mỗi lần chạy job,
 // để tránh chạy quá lâu và tránh chạm rate limit của Meta.

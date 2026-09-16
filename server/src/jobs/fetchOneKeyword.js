@@ -20,8 +20,8 @@ import { launchLibraryBrowser, closeLibraryBrowser } from "../lib/adLibraryScrap
 import { processKeyword } from "./scanKeyword.js";
 import { guessCategory } from "../lib/guessCategory.js";
 
-const VALID_COUNTRIES = ["MX", "US"];
-const VALID_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang", "Đồ gia dụng"];
+const VALID_COUNTRIES = ["MX", "US", "KR", "TH", "MY"];
+const VALID_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang"];
 
 async function main() {
   const keyword = (process.env.SCAN_KEYWORD || "").trim();

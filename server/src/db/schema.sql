@@ -43,7 +43,7 @@ ALTER TABLE ads ADD COLUMN IF NOT EXISTS thumbnail_url TEXT; -- ảnh/poster vid
 -- trước — dùng mảng + merge (xem fetchAds.js) để giữ đủ cả 2.
 ALTER TABLE ads ADD COLUMN IF NOT EXISTS countries TEXT[] NOT NULL DEFAULT '{}';
 
--- category: nhóm ngành hàng lớn ("Mỹ phẩm & Làm đẹp" / "Thời trang" / "Đồ gia dụng"...), gắn cứng
+-- category: nhóm ngành hàng lớn ("Mỹ phẩm & Làm đẹp" / "Thời trang"...), gắn cứng
 -- từ config/keywords.js tại thời điểm quét — KHÔNG suy luận bằng cách so chuỗi tên ở tầng giao diện
 -- (cách cũ ui.js dùng, dễ vỡ khi thêm ngành mới) để tránh phân loại sai.
 ALTER TABLE ads ADD COLUMN IF NOT EXISTS category TEXT;

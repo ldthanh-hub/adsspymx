@@ -372,11 +372,11 @@ export default function BrandsDashboard() {
         }
         .market-toggle {
           display: flex;
+          flex-wrap: wrap;
           background: #f1f2f8;
           border-radius: 9px;
           padding: 3px;
           gap: 3px;
-          flex-shrink: 0;
         }
         .market-toggle button {
           border: none;

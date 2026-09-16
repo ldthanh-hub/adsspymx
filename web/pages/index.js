@@ -22,7 +22,7 @@ const PAGE_SIZE = 60;
 // Link thẳng tới trang chạy workflow "Quét 1 từ khóa theo yêu cầu" trên GitHub — xem README mục
 // cùng tên để có hướng dẫn từng bước. Đổi lại URL này nếu sau này đổi tên/chuyển repo.
 const SCAN_WORKFLOW_URL = "https://github.com/ldthanh-hub/adsspymx/actions/workflows/fetch-oneoff.yml";
-const SCAN_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang", "Đồ gia dụng"];
+const SCAN_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang"];
 
 export default function Home() {
   const router = useRouter();
@@ -181,6 +181,26 @@ export default function Home() {
 
   const industryItems = keywordStats.filter((k) => k.type === "industry");
 
+  // Nhóm các từ khóa ngành hàng theo category để hiển thị có sub-header trong dropdown "Ngành hàng"
+  // (trước đây hiển thị 1 danh sách phẳng, khó phân biệt từ khóa nào thuộc ngành nào khi số lượng
+  // từ khóa tăng lên sau khi thêm nhiều thị trường). Nhóm nào không xác định được category (dữ liệu
+  // cũ/lỗi) rơi vào nhóm "Khác", luôn hiển thị cuối cùng. Trong mỗi nhóm vẫn sắp xếp theo total giảm
+  // dần (industryItems đã được server trả về ORDER BY total DESC).
+  const industryGroups = useMemo(() => {
+    const groups = new Map();
+    for (const k of industryItems) {
+      const cat = k.category || "Khác";
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat).push(k);
+    }
+    const order = [...SCAN_CATEGORIES, "Khác"];
+    return [...groups.entries()].sort((a, b) => {
+      const ia = order.indexOf(a[0]);
+      const ib = order.indexOf(b[0]);
+      return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib);
+    });
+  }, [industryItems]);
+
   const visibleBrands = useMemo(() => {
     const text = brandFilterText.trim().toLowerCase();
     let list = brandStats;
@@ -279,18 +299,23 @@ export default function Home() {
               )}
             </div>
             <div className="dd-list">
-              {industryItems.map((k) => (
-                <label key={k.keyword} className={`kw-row ${selectedKeywords.has(k.keyword) ? "active" : ""}`}>
-                  <input type="checkbox" checked={selectedKeywords.has(k.keyword)} onChange={() => toggleKeyword(k.keyword)} />
-                  <span className="kw-label-wrap">
-                    <span className="kw-label">{industryLabelVi(k.keyword)}</span>
-                    {industryLabelVi(k.keyword) !== k.keyword && <span className="kw-label-orig">{k.keyword}</span>}
-                  </span>
-                  <span className="kw-count">
-                    {k.total}
-                    {Number(k.active) > 0 && <i className="dot" />}
-                  </span>
-                </label>
+              {industryGroups.map(([category, items]) => (
+                <div key={category} className="dd-group">
+                  <div className="dd-group-label">{category}</div>
+                  {items.map((k) => (
+                    <label key={k.keyword} className={`kw-row ${selectedKeywords.has(k.keyword) ? "active" : ""}`}>
+                      <input type="checkbox" checked={selectedKeywords.has(k.keyword)} onChange={() => toggleKeyword(k.keyword)} />
+                      <span className="kw-label-wrap">
+                        <span className="kw-label">{industryLabelVi(k.keyword)}</span>
+                        {industryLabelVi(k.keyword) !== k.keyword && <span className="kw-label-orig">{k.keyword}</span>}
+                      </span>
+                      <span className="kw-count">
+                        {k.total}
+                        {Number(k.active) > 0 && <i className="dot" />}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               ))}
               {industryItems.length === 0 && <p className="muted small dd-empty">Chưa có dữ liệu.</p>}
             </div>
@@ -694,6 +719,19 @@ export default function Home() {
         }
         .dd-empty {
           padding: 10px 6px;
+        }
+        .dd-group + .dd-group {
+          margin-top: 6px;
+          padding-top: 8px;
+          border-top: 1px solid #eceef6;
+        }
+        .dd-group-label {
+          font-size: 10.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          color: #b3b5cc;
+          padding: 2px 8px 4px;
         }
 
         .brand-filter-input {

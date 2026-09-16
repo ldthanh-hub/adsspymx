@@ -49,7 +49,7 @@ const listQuerySchema = z.object({
   // country: lọc theo thị trường — khớp với countries[] (1 ad có thể thuộc nhiều nước cùng lúc,
   // xem ghi chú countries trong schema.sql). Cho phép chọn nhiều (giống keyword/page_names).
   country: z.string().max(200).optional(),
-  // category: nhóm ngành hàng lớn ("Mỹ phẩm & Làm đẹp"/"Thời trang"/"Đồ gia dụng"...), gắn cứng
+  // category: nhóm ngành hàng lớn ("Mỹ phẩm & Làm đẹp"/"Thời trang"...), gắn cứng
   // từ config/keywords.js lúc quét — cho phép chọn nhiều.
   category: z.string().max(500).optional(),
   // media_type: "video" | "image" | "none" — suy ra lúc quét bằng heuristic thumbnail đã kiểm

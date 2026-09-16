@@ -4,7 +4,13 @@ import { useState, useEffect } from "react";
 
 // Danh sách thị trường đang theo dõi — khớp với MARKETS trong server/src/config/keywords.js (chỉ
 // cần khai báo tên hiển thị ở đây, phần từ khóa/thương hiệu nằm bên server, không lặp lại).
-export const MARKET_LABELS = { MX: "Mexico", US: "United States" };
+export const MARKET_LABELS = {
+  MX: "Mexico",
+  US: "United States",
+  KR: "Hàn Quốc",
+  TH: "Thái Lan",
+  MY: "Malaysia",
+};
 export const MARKET_CODES = Object.keys(MARKET_LABELS);
 
 export const MEDIA_TYPE_LABELS = { video: "Video", image: "Hình ảnh", none: "Không có ảnh/video" };
@@ -24,8 +30,6 @@ export const INDUSTRY_LABELS_VI = {
   "moda mujer": "Thời trang nữ",
   "ropa mujer": "Quần áo nữ",
   "zapatos mujer": "Giày nữ",
-  "artículos para el hogar": "Đồ dùng gia đình",
-  "decoración del hogar": "Trang trí nhà cửa",
   // United States
   skincare: "Chăm sóc da",
   makeup: "Trang điểm",
@@ -33,8 +37,24 @@ export const INDUSTRY_LABELS_VI = {
   cosmetics: "Mỹ phẩm",
   "women's fashion": "Thời trang nữ",
   "men's clothing": "Quần áo nam",
-  "home decor": "Trang trí nhà cửa",
-  "kitchen gadgets": "Dụng cụ nhà bếp",
+  // Hàn Quốc (Korea)
+  "스킨케어": "Chăm sóc da (Hàn Quốc)",
+  "화장품": "Mỹ phẩm (Hàn Quốc)",
+  "메이크업": "Trang điểm (Hàn Quốc)",
+  "여성 패션": "Thời trang nữ (Hàn Quốc)",
+  "남성 의류": "Quần áo nam (Hàn Quốc)",
+  // Thái Lan (Thailand)
+  "สกินแคร์": "Chăm sóc da (Thái Lan)",
+  "เครื่องสำอาง": "Mỹ phẩm (Thái Lan)",
+  "แต่งหน้า": "Trang điểm (Thái Lan)",
+  "แฟชั่นผู้หญิง": "Thời trang nữ (Thái Lan)",
+  "เสื้อผ้าผู้ชาย": "Quần áo nam (Thái Lan)",
+  // Malaysia
+  "penjagaan kulit": "Chăm sóc da (Malaysia)",
+  kosmetik: "Mỹ phẩm (Malaysia)",
+  mekap: "Trang điểm (Malaysia)",
+  "fesyen wanita": "Thời trang nữ (Malaysia)",
+  "pakaian lelaki": "Quần áo nam (Malaysia)",
 };
 
 export function industryLabelVi(keyword) {
@@ -53,6 +73,8 @@ const CATEGORY_GUESS_RULES = [
       "skincare", "skin care", "makeup", "make up", "maquillaje", "cosmetic", "cosmetico", "cosmético",
       "belleza", "beauty", "piel", "serum", "sérum", "crema", "cream", "sunscreen", "protector solar",
       "perfume", "fragrance", "fragancia", "lipstick", "labial", "retinol", "vitamin c",
+      // Hàn/Thái/Malay (KR/TH/MY)
+      "스킨케어", "화장품", "메이크업", "สกินแคร์", "เครื่องสำอาง", "แต่งหน้า", "penjagaan kulit", "kosmetik", "mekap",
     ],
   },
   {
@@ -60,14 +82,7 @@ const CATEGORY_GUESS_RULES = [
     terms: [
       "fashion", "moda", "ropa", "clothing", "apparel", "zapato", "shoe", "sneaker", "tenis", "dress",
       "vestido", "bag", "bolsa", "jewelry", "joyeria", "joyería", "accesorio", "accessory", "wear",
-    ],
-  },
-  {
-    category: "Đồ gia dụng",
-    terms: [
-      "home", "hogar", "decor", "decoracion", "decoración", "furniture", "mueble", "kitchen", "cocina",
-      "bedding", "sabana", "sábana", "pillow", "almohada", "sofa", "sofá", "rug", "tapete", "lamp",
-      "lámpara", "cookware",
+      "여성 패션", "남성 의류", "แฟชั่นผู้หญิง", "เสื้อผ้าผู้ชาย", "fesyen wanita", "pakaian lelaki",
     ],
   },
 ];
