@@ -18,6 +18,9 @@ on:
         options:
           - MX
           - US
+          - KR
+          - TH
+          - MY
       category:
         description: "Ngành hàng (tuỳ chọn — chỉ để phân loại/hiển thị, để trống nếu không chắc)"
         required: false
@@ -27,7 +30,6 @@ on:
           - ""
           - "Mỹ phẩm & Làm đẹp"
           - "Thời trang"
-          - "Đồ gia dụng"
 
 jobs:
   fetch-one:
