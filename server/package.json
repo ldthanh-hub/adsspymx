@@ -12,7 +12,8 @@
     "fetch:one": "node src/jobs/fetchOneKeyword.js",
     "migrate": "node src/db/migrate.js",
     "fetch:signals": "node src/jobs/fetchSignals.js",
-    "fetch:competitors": "node src/jobs/fetchCompetitors.js"
+    "fetch:competitors": "node src/jobs/fetchCompetitors.js",
+    "refresh:thumbnails": "node src/jobs/refreshThumbnails.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

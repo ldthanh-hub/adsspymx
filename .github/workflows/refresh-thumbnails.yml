@@ -1,0 +1,57 @@
+name: Làm mới thumbnail ad đang chạy
+
+# thumbnail_url là link CDN trực tiếp của Meta có token hết hạn (xem ghi chú trong
+# server/src/lib/adLibraryScraper.js). Job quét từ khóa hàng ngày chỉ làm mới thumbnail
+# cho ad mà lần quét trả về; ad không còn lọt vào kết quả quét thì URL cứ già đi rồi chết.
+# Job này mở lại từng trang ad gốc để lấy poster mới cho ad đang chạy.
+#
+# Lịch: 17:00 UTC = 00:00 giờ Việt Nam — chạy sau job Meta (20:00 VN) và job signals
+# (21:00 VN) để tránh 2 job Playwright cùng lúc. workflow_dispatch để bấm chạy tay:
+# lần chạy đầu tiên NÊN bấm tay để đọc bảng tổng kết (xem ghi chú trong job) trước khi
+# tin lịch tự động.
+on:
+  schedule:
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Phạm vi (checklist = ad đang chạy của 30 brand; all = toàn bộ ad đang chạy, vẫn giới hạn limit mỗi lần)"
+        required: false
+        default: "checklist"
+        type: choice
+        options: [checklist, all]
+      limit:
+        description: "Số ad xử lý tối đa mỗi lần chạy (ad thấy lần đầu sớm nhất trước)"
+        required: false
+        default: "400"
+
+jobs:
+  refresh-thumbnails:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Cài dependencies
+        run: npm install
+
+      - name: Áp dụng cấu trúc database mới nhất
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run migrate
+
+      - name: Cài Chromium cho Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Chạy job làm mới thumbnail
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run refresh:thumbnails -- --scope=${{ inputs.scope || 'checklist' }} --limit=${{ inputs.limit || '400' }}
