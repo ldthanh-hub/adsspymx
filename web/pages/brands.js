@@ -99,7 +99,10 @@ export default function BrandsDashboard() {
 
   const [tableSearch, setTableSearch] = useState("");
   const debouncedTableSearch = useDebouncedValue(tableSearch, 300);
-  const [tableSort, setTableSort] = useState("total"); // total | active | endurance
+  const [tableSort, setTableSort] = useState("total"); // total | active | endurance | engagement
+  const [selectedBrand, setSelectedBrand] = useState(null); // page_name đang phân tích sâu
+  const [brandTrend, setBrandTrend] = useState([]);
+  const [brandTrendLoading, setBrandTrendLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(TABLE_PAGE);
   const [countryFilter, setCountryFilter] = useState("MX"); // mặc định thị trường gốc; "" = gộp MX+US (từ 26/10/2026, không còn gộp KR/TH/MY)
 
@@ -131,8 +134,19 @@ export default function BrandsDashboard() {
           for (const b of (await brandsRes.json()).data || []) {
             const prev = brandMap.get(b.page_name);
             if (prev) {
-              prev.total = String(Number(prev.total) + Number(b.total));
+              const prevTotal = Number(prev.total);
+              const bTotal = Number(b.total);
+              prev.total = String(prevTotal + bTotal);
               prev.active = String(Number(prev.active) + Number(b.active));
+              prev.max_days_active = Math.max(Number(prev.max_days_active) || 0, Number(b.max_days_active) || 0);
+              // Trung bình ngày chạy gộp = trung bình có trọng số theo tổng ad từng thị trường.
+              prev.avg_days_active = Math.round(
+                ((Number(prev.avg_days_active) || 0) * prevTotal + (Number(b.avg_days_active) || 0) * bTotal) /
+                  Math.max(1, prevTotal + bTotal)
+              );
+              for (const k of ["total_likes", "total_comments", "total_shares", "total_video_views", "engagement_parsed"]) {
+                prev[k] = String(Number(prev[k] || 0) + Number(b[k] || 0));
+              }
               prev.categories = [...new Set([...(prev.categories || []), ...(b.categories || [])])];
             } else brandMap.set(b.page_name, { ...b });
           }
@@ -158,25 +172,50 @@ export default function BrandsDashboard() {
     })();
   }, [countryFilter]);
 
-  // Ngưỡng hiển thị do Đăng chốt 26/10/2026: chỉ brand có từ 5 ad trở lên mới liệt kê.
-  // Lý do: danh sách gộp MX+US trước đây lên tới 775 brand, trong đó 474 brand chỉ có đúng
-  // 1 ad (nhà bán lẻ, tạp chí, influencer, trang lạ kéo về qua từ khóa ngành chung) và 337
-  // brand đã dừng chạy — lọc >=5 ad còn 87 brand, đúng nhóm đối thủ đáng theo dõi. Ngưỡng này
-  // áp cho CẢ số đếm ở thẻ thống kê, Top 10 và bảng danh sách (trước đây thẻ thống kê đếm
-  // brandStats chưa lọc nên vẫn hiện 775 dù bảng đã lọc category, gây hiểu nhầm là brand cũ
-  // chưa xóa). Khi chọn riêng MX hoặc US, total là total của thị trường đó, ngưỡng vẫn là 5.
-  const MIN_BRAND_TOTAL = 5;
-  const displayBrands = useMemo(
-    () => brandStats.filter((b) => Number(b.total || 0) >= MIN_BRAND_TOTAL),
-    [brandStats]
-  );
+  // Xu hướng RIÊNG của brand đang chọn: gọi /api/trend?brand=... từng thị trường rồi gộp ngày
+  // (giống cách gộp dashboard chính) — brand ở đây khớp OR giống /api/ads nên xu hướng của 1
+  // brand đã cấu hình (VD "Medicube") sẽ gồm cả ad affiliate nhắc tới brand đó, không chỉ Page chính.
+  useEffect(() => {
+    if (!selectedBrand || !API_BASE) {
+      setBrandTrend([]);
+      return;
+    }
+    (async () => {
+      setBrandTrendLoading(true);
+      try {
+        const countries = countryFilter ? [countryFilter] : ["MX", "US"];
+        const cat = encodeURIComponent("Mỹ phẩm & Làm đẹp");
+        const map = new Map();
+        for (const c of countries) {
+          const res = await fetch(
+            `${API_BASE}/api/trend?country=${encodeURIComponent(c)}&category=${cat}&brand=${encodeURIComponent(selectedBrand)}`
+          );
+          if (!res.ok) throw new Error("API trả về lỗi khi tải xu hướng brand");
+          for (const tr of (await res.json()).data || []) {
+            map.set(tr.day, (map.get(tr.day) || 0) + Number(tr.ads_discovered));
+          }
+        }
+        setBrandTrend(
+          [...map.entries()].map(([day, ads_discovered]) => ({ day, ads_discovered })).sort((a, b) => a.day.localeCompare(b.day))
+        );
+      } catch {
+        setBrandTrend([]);
+      } finally {
+        setBrandTrendLoading(false);
+      }
+    })();
+  }, [selectedBrand, countryFilter]);
 
+  // BỎ ngưỡng >=5 ad (Đăng đính chính 26/10/2026, sau khi chốt ngưỡng lúc 10:45 cùng ngày):
+  // affiliate của đối thủ thường chỉ có 1-2 ad, và mục tiêu của anh là khai thác TỐI ĐA brand
+  // đối thủ — nên danh sách mặc định quay lại đầy đủ (MX+US, thuần mỹ phẩm), không lọc số ad.
+  // Khi đang tìm trong bảng thì tìm cả theo từ khóa gắn với Page, không giới hạn số ad.
   const totals = useMemo(() => {
-    const totalAds = displayBrands.reduce((s, b) => s + Number(b.total || 0), 0);
-    const totalActive = displayBrands.reduce((s, b) => s + Number(b.active || 0), 0);
-    const longest = displayBrands.reduce((m, b) => Math.max(m, Number(b.max_days_active) || 0), 0);
-    return { totalBrands: displayBrands.length, totalAds, totalActive, longest };
-  }, [displayBrands]);
+    const totalAds = brandStats.reduce((s, b) => s + Number(b.total || 0), 0);
+    const totalActive = brandStats.reduce((s, b) => s + Number(b.active || 0), 0);
+    const longest = brandStats.reduce((m, b) => Math.max(m, Number(b.max_days_active) || 0), 0);
+    return { totalBrands: brandStats.length, totalAds, totalActive, longest };
+  }, [brandStats]);
 
   const trendPoints = useMemo(
     () => trend.map((t) => ({ day: t.day, value: Number(t.ads_discovered) })),
@@ -192,40 +231,86 @@ export default function BrandsDashboard() {
   );
 
   const topActiveBrands = useMemo(
-    () => [...displayBrands].sort((a, b) => Number(b.active) - Number(a.active)).slice(0, 10),
-    [displayBrands]
+    () => [...brandStats].sort((a, b) => Number(b.active) - Number(a.active)).slice(0, 10),
+    [brandStats]
+  );
+
+  // Tương tác của 1 Page = like + comment + share (KHÔNG cộng video_views — view khác đơn vị).
+  // Backend cũ chưa có total_likes/... thì các số này về 0 — panel sẽ ghi chú rõ, không đọc 0
+  // là "không ai tương tác". Số 0 cũng có thể là ad không parse được (xem engagement_parsed).
+  const interactionsOf = (b) => Number(b.total_likes || 0) + Number(b.total_comments || 0) + Number(b.total_shares || 0);
+
+  const topEngagementBrands = useMemo(
+    () => [...brandStats].sort((a, b) => interactionsOf(b) - interactionsOf(a)).slice(0, 10),
+    [brandStats]
+  );
+
+  // Affiliate / Page đăng chung: tên Page chứa " with " (VD "Chris Han with Medicube",
+  // "Sandygal with ANUA_Global") — phần sau "with" là brand được nhắc tới. Đây là nhóm Page
+  // mà danh sách chính đếm riêng từng Page, panel này gom lại để thấy brand nào được affiliate
+  // nhắc nhiều nhất, dù mỗi affiliate chỉ có 1-2 ad.
+  const affiliatePages = useMemo(() => {
+    const rows = brandStats
+      .filter((b) => /\s+with\s+/i.test(b.page_name))
+      .map((b) => ({ ...b, affiliateBrand: b.page_name.split(/\s+with\s+/i).pop().trim() }))
+      .sort((a, b) => Number(b.total) - Number(a.total))
+      .slice(0, 10);
+    return rows;
+  }, [brandStats]);
+
+  const selectedRow = useMemo(
+    () => (selectedBrand ? brandStats.find((b) => b.page_name === selectedBrand) || null : null),
+    [selectedBrand, brandStats]
+  );
+
+  const selectedAffiliates = useMemo(() => {
+    if (!selectedRow) return [];
+    const base = selectedRow.page_name;
+    return brandStats
+      .filter(
+        (b) =>
+          b.page_name !== base &&
+          (b.page_name.toLowerCase().includes(base.toLowerCase()) ||
+            (b.keywords || []).some((k) => String(k).toLowerCase() === base.toLowerCase()))
+      )
+      .sort((a, b) => Number(b.total) - Number(a.total))
+      .slice(0, 10);
+  }, [selectedRow, brandStats]);
+
+  const brandTrendPoints = useMemo(
+    () => brandTrend.map((t) => ({ day: t.day, value: Number(t.ads_discovered) })),
+    [brandTrend]
   );
 
   const filteredTable = useMemo(() => {
     const text = debouncedTableSearch.trim().toLowerCase();
-    // Khi ĐANG tìm kiếm theo tên brand thì bypass ngưỡng >=5 và tìm cả theo từ khóa gắn với Page
-    // (b.keywords) — VD gõ "Medicube" sẽ ra cả Page "X with Medicube" dù mỗi Page chỉ có 1-2 ad.
-    // Khi không tìm kiếm thì quay lại danh sách gọn displayBrands (>=5 ad, thuần mỹ phẩm).
+    // Khi ĐANG tìm kiếm theo tên brand thì tìm cả theo từ khóa gắn với Page (b.keywords) —
+    // VD gõ "Medicube" sẽ ra cả Page "X with Medicube" dù mỗi Page chỉ có 1-2 ad.
+    const sortRows = (rows) =>
+      [...rows].sort((a, b) => {
+        if (tableSort === "active") return Number(b.active) - Number(a.active);
+        if (tableSort === "endurance") return Number(b.max_days_active || 0) - Number(a.max_days_active || 0);
+        if (tableSort === "engagement") return interactionsOf(b) - interactionsOf(a);
+        return Number(b.total) - Number(a.total);
+      });
     if (text) {
-      return [...brandStats]
-        .filter(
+      return sortRows(
+        brandStats.filter(
           (b) =>
             b.page_name.toLowerCase().includes(text) ||
             (b.keywords || []).some((k) => String(k).toLowerCase().includes(text))
         )
-        .sort((a, b) => {
-          if (tableSort === "active") return Number(b.active) - Number(a.active);
-          if (tableSort === "endurance") return Number(b.max_days_active || 0) - Number(a.max_days_active || 0);
-          return Number(b.total) - Number(a.total);
-        });
+      );
     }
     // Chỉ liệt kê thương hiệu thuần Mỹ phẩm & Làm đẹp (xem ghi chú ở web/pages/index.js) —
     // loại Page lẫn category Thời trang (VD SHEIN Mexico) khỏi danh sách đối thủ mỹ phẩm.
-    let rows = displayBrands.filter(
-      (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
+    // Không lọc số ad tối thiểu: affiliate 1-2 ad vẫn hiện đầy đủ.
+    return sortRows(
+      brandStats.filter(
+        (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
+      )
     );
-    const sorted = [...rows].sort((a, b) => {
-      if (tableSort === "active") return Number(b.active) - Number(a.active);
-      if (tableSort === "endurance") return Number(b.max_days_active || 0) - Number(a.max_days_active || 0);
-      return Number(b.total) - Number(a.total);
-    });
-    return sorted;
-  }, [displayBrands, brandStats, debouncedTableSearch, tableSort]);
+  }, [brandStats, debouncedTableSearch, tableSort]);
 
   return (
     <Layout active="brands">
@@ -314,6 +399,137 @@ export default function BrandsDashboard() {
               </div>
             </div>
 
+            <div className="panel-grid">
+              <div className="panel">
+                <h3>Top 10 brand — tương tác cao nhất</h3>
+                <p className="panel-sub">
+                  Tương tác = like + comment + share cộng dồn mọi ad (không tính video views — view khác đơn vị).
+                  Số liệu là best-effort từ Meta Ad Library: ad không gắn post công khai thì không parse được
+                  tương tác, nên brand có tỉ lệ parse thấp thì số này bị thiếu, không phải "không ai tương tác".
+                  Nếu backend chưa deploy bản mới, các cột này sẽ hiện 0 — tải lại sau khi Render deploy xong.
+                </p>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Thương hiệu</th>
+                        <th>Like</th>
+                        <th>Bình luận</th>
+                        <th>Chia sẻ</th>
+                        <th>Views</th>
+                        <th>Tương tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topEngagementBrands.map((b) => (
+                        <tr key={b.page_name}>
+                          <td>
+                            <button className="btn-brand-name" onClick={() => setSelectedBrand(b.page_name)}>
+                              {b.page_name}
+                            </button>
+                          </td>
+                          <td>{b.total_likes ?? "—"}</td>
+                          <td>{b.total_comments ?? "—"}</td>
+                          <td>{b.total_shares ?? "—"}</td>
+                          <td>{b.total_video_views ?? "—"}</td>
+                          <td>
+                            <strong>{interactionsOf(b)}</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="panel-sub">Bấm tên brand để xem phân tích sâu bên dưới.</p>
+              </div>
+              <div className="panel">
+                <h3>Affiliate / Page đăng chung — top 10 theo tổng ad</h3>
+                <p className="panel-sub">
+                  Page có tên dạng "X with Brand" là ad đăng chung hoặc affiliate/influencer nhắc tới brand.
+                  Mỗi Page này thường chỉ có 1-2 ad, nhưng gộp lại mới thấy brand nào đang được đẩy qua
+                  affiliate mạnh nhất — đây chính là nhóm bị ngưỡng tối thiểu ad cũ loại mất.
+                </p>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Page affiliate</th>
+                        <th>Brand được nhắc</th>
+                        <th>Tổng ad</th>
+                        <th>Đang chạy</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {affiliatePages.map((b) => (
+                        <tr key={b.page_name}>
+                          <td>{b.page_name}</td>
+                          <td>{b.affiliateBrand}</td>
+                          <td>{b.total}</td>
+                          <td>{Number(b.active) > 0 ? <span className="active-badge">{b.active}</span> : "0"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {affiliatePages.length === 0 && <p className="chart-empty">Chưa phát hiện Page dạng "X with Brand".</p>}
+              </div>
+            </div>
+
+            {selectedRow && (
+              <div className="panel">
+                <div className="table-head">
+                  <h3>Phân tích sâu: {selectedRow.page_name}</h3>
+                  <button className="btn-load-more" onClick={() => setSelectedBrand(null)}>
+                    Đóng
+                  </button>
+                </div>
+                <div className="stat-row" style={{ marginTop: 12 }}>
+                  <div className="stat-card">
+                    <span className="stat-value">{selectedRow.total}</span>
+                    <span className="stat-label">Tổng ad</span>
+                  </div>
+                  <div className="stat-card accent-good">
+                    <span className="stat-value">{selectedRow.active}</span>
+                    <span className="stat-label">Ad đang chạy</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-value">{interactionsOf(selectedRow)}</span>
+                    <span className="stat-label">Tương tác (like + bình luận + chia sẻ)</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-value">
+                      {selectedRow.avg_days_active ?? "—"} / {selectedRow.max_days_active ?? "—"}
+                    </span>
+                    <span className="stat-label">Ngày chạy trung bình / bền nhất</span>
+                  </div>
+                </div>
+                <p className="panel-sub">
+                  Tỉ lệ ad parse được tương tác: {selectedRow.engagement_parsed ?? "—"}/{selectedRow.total} ad.
+                  Từ khóa gắn với Page: {(selectedRow.keywords || []).join(", ") || "—"}. Xuất hiện lần đầu:{" "}
+                  {selectedRow.first_seen_at ? String(selectedRow.first_seen_at).slice(0, 10) : "—"} — thấy lần cuối:{" "}
+                  {selectedRow.last_seen_at ? String(selectedRow.last_seen_at).slice(0, 10) : "—"}.
+                  {selectedAffiliates.length > 0 && (
+                    <>
+                      {" "}
+                      Page liên quan (cùng tên hoặc cùng từ khóa):{" "}
+                      {selectedAffiliates.map((b) => `${b.page_name} (${b.total} ad)`).join(", ")}.
+                    </>
+                  )}
+                </p>
+                <h3 style={{ marginTop: 14 }}>Ad mới phát hiện của brand này — 30 ngày qua</h3>
+                {brandTrendLoading ? (
+                  <p className="muted">Đang tải xu hướng...</p>
+                ) : (
+                  <LineChart points={brandTrendPoints} />
+                )}
+                <div style={{ marginTop: 12 }}>
+                  <Link href={`/?brand=${encodeURIComponent(selectedRow.page_name)}`} className="btn-view-ads">
+                    Xem quảng cáo của brand này
+                  </Link>
+                </div>
+              </div>
+            )}
+
             <div className="panel">
               <div className="table-head">
                 <h3>Danh sách đối thủ ({filteredTable.length})</h3>
@@ -327,14 +543,15 @@ export default function BrandsDashboard() {
                     <option value="total">Sắp xếp: Tổng ad</option>
                     <option value="active">Sắp xếp: Đang chạy nhiều nhất</option>
                     <option value="endurance">Sắp xếp: Chạy bền nhất</option>
+                    <option value="engagement">Sắp xếp: Tương tác cao nhất</option>
                   </select>
                 </div>
               </div>
               <p className="panel-sub">
                 Ngành hàng gắn cứng theo cấu hình từ khóa/thương hiệu (server/src/config/keywords.js), không suy đoán
-                bằng cách so chuỗi tên. Chỉ liệt kê brand có từ 5 ad trở lên (loại 474 brand chỉ có 1 ad).
-                Sản phẩm/website/TikTok chưa có nguồn dữ liệu tự động — có thể bổ sung thủ
-                công sau.
+                bằng cách so chuỗi tên. Danh sách đầy đủ, không lọc số ad tối thiểu — affiliate 1-2 ad vẫn hiện.
+                Google Trends / Mercado Libre / TikTok chưa có trong dashboard này — đó là nguồn dữ liệu mới,
+                sẽ thêm thành panel riêng sau, không trộn vào số liệu Meta hiện tại.
               </p>
               <div className="table-wrap">
                 <table>
@@ -345,6 +562,7 @@ export default function BrandsDashboard() {
                       <th>Tổng ad</th>
                       <th>Đang chạy</th>
                       <th>Bền nhất</th>
+                      <th>Tương tác</th>
                       <th>Facebook</th>
                       <th></th>
                     </tr>
@@ -377,6 +595,12 @@ export default function BrandsDashboard() {
                           <td>{b.total}</td>
                           <td>{Number(b.active) > 0 ? <span className="active-badge">{b.active}</span> : "0"}</td>
                           <td>{b.max_days_active ?? "—"} ngày</td>
+                          <td>{interactionsOf(b)}</td>
+                          <td>
+                            <button className="btn-brand-name" onClick={() => setSelectedBrand(b.page_name)}>
+                              Phân tích
+                            </button>
+                          </td>
                           <td>
                             {fbUrl ? (
                               <a href={fbUrl} target="_blank" rel="noreferrer">
@@ -680,6 +904,19 @@ export default function BrandsDashboard() {
         }
         .btn-view-ads:hover {
           background: #2b2c5c;
+        }
+        .btn-brand-name {
+          background: none;
+          border: none;
+          color: #6c5ce7;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          padding: 0;
+          white-space: nowrap;
+        }
+        .btn-brand-name:hover {
+          text-decoration: underline;
         }
 
         .load-more-wrap {

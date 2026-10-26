@@ -194,6 +194,10 @@ app.get("/api/ads", async (req, res, next) => {
 const statsQuerySchema = z.object({
   country: z.string().max(200).optional(),
   category: z.string().max(500).optional(),
+  // brand: chỉ /api/trend dùng để vẽ xu hướng RIÊNG 1 brand (khớp OR giống /api/ads:
+  // tên Page chứa brand, nội dung nhắc brand, hoặc từ khóa đúng tên brand). /api/keywords và
+  // /api/brands nhận tham số này mà không dùng — giữ schema chung cho đỡ vỡ frontend cũ.
+  brand: z.string().max(200).optional(),
 });
 
 // Điều kiện scope chung cho các endpoint thống kê: country = giao nhau với mảng countries,
@@ -272,6 +276,12 @@ app.get("/api/brands", async (req, res, next) => {
               COUNT(*) AS total,
               COUNT(*) FILTER (WHERE is_active) AS active,
               MAX(days_active) AS max_days_active,
+              ROUND(AVG(days_active)) AS avg_days_active,
+              COALESCE(SUM(likes_count), 0) AS total_likes,
+              COALESCE(SUM(comments_count), 0) AS total_comments,
+              COALESCE(SUM(shares_count), 0) AS total_shares,
+              COALESCE(SUM(video_views), 0) AS total_video_views,
+              COUNT(*) FILTER (WHERE engagement_parse_ok) AS engagement_parsed,
               array_agg(DISTINCT keyword ORDER BY keyword) AS keywords,
               array_agg(DISTINCT category) FILTER (WHERE category IS NOT NULL) AS categories,
               MIN(first_seen_at) AS first_seen_at,
@@ -301,6 +311,12 @@ app.get("/api/trend", async (req, res, next) => {
     }
     const values = [];
     const conditions = [`first_seen_at >= now() - interval '30 days'`, ...statsConditions(parsed, values)];
+    if (parsed.data.brand) {
+      values.push(`%${parsed.data.brand}%`);
+      conditions.push(
+        `(page_name ILIKE $${values.length} OR creative_text ILIKE $${values.length} OR keyword ILIKE $${values.length})`
+      );
+    }
 
     const { rows } = await pool.query(
       `SELECT date_trunc('day', first_seen_at)::date AS day, COUNT(*) AS ads_discovered

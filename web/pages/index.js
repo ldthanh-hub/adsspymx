@@ -284,13 +284,11 @@ export default function Home() {
     // (VD SHEIN Mexico có cả 2 category trong DB, nên dù backend đã lọc ad theo category thì
     // Page đó vẫn lọt vào danh sách nếu chỉ lọc theo categories.includes). Page không có
     // categories (dữ liệu cũ hiếm) thì giữ lại để không mất brand thật.
-    // Ngưỡng hiển thị do Đăng chốt 26/10/2026: chỉ brand có từ 5 ad trở lên (xem web/pages/brands.js)
-    // — sidebar Thương hiệu ở trang chính cũng phải gọn như Dashboard, không liệt kê lại 474
-    // brand chỉ có 1 ad.
+    // Không áp ngưỡng số ad ở sidebar (Đăng đính chính 26/10/2026): affiliate chỉ có 1-2 ad
+    // vẫn phải hiện, vì mục tiêu là khai thác tối đa brand đối thủ. Chỉ lọc thuần mỹ phẩm như cũ.
+    // Muốn tìm nhanh 1 brand cụ thể thì dùng ô "Tìm thương hiệu" ở dưới thanh lọc.
     let list = brandStats.filter(
-      (b) =>
-        Number(b.total || 0) >= 5 &&
-        (!b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp"))
+      (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
     );
     if (text) list = list.filter((b) => b.page_name.toLowerCase().includes(text));
     return showAllBrands || text ? list : list.slice(0, 30);
@@ -475,7 +473,7 @@ export default function Home() {
         {brandSearch && (
           <p className="hint-text" style={{ marginTop: "8px" }}>
             Đang tìm brand: <strong>{brandSearch}</strong> — hiện tất cả ad liên quan (brand chính + affiliate /
-            influencer nhắc tới brand), không giới hạn 5 ad, không lọc category, và trạng thái đã chuyển sang Tất cả để hiện cả ad đã dừng. Bấm “Xóa tìm kiếm” để quay lại
+            influencer nhắc tới brand), không lọc category, và trạng thái đã chuyển sang Tất cả để hiện cả ad đã dừng. Bấm “Xóa tìm kiếm” để quay lại
             danh sách thường.
           </p>
         )}
