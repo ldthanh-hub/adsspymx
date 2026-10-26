@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import Layout from "../components/Layout";
-import { MARKET_LABELS, MARKET_CODES, CHECKLIST_BRANDS, avatarGradient, initials, facebookUrlFor, useDebouncedValue } from "../lib/ui";
+import { MARKET_LABELS, MARKET_CODES, CHECKLIST_BRANDS, pageMatchesTracked, isCosmeticsOrUnknownPage, avatarGradient, initials, facebookUrlFor, useDebouncedValue } from "../lib/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const TABLE_PAGE = 25;
@@ -19,20 +19,6 @@ const TRACKED_BRANDS = CHECKLIST_BRANDS;
 // "beautyofjoseon"). Affiliate dạng "X with Brand" cũng khớp vì tên đã chứa tên Brand.
 // VT là ngoại lệ: phải khớp theo từ độc lập (\bvt\b) hoặc bắt đầu bằng "VT", vì "vt" có thể
 // xuất hiện trong từ khác khi chuẩn hóa bỏ khoảng trắng.
-function pageMatchesTracked(page, tracked) {
-  const name = String(page.page_name || "");
-  // VT, Natura, Olay: khớp theo TỪ độc lập — "Naturales" không được tính là "Natura",
-  // "VT" không được tính khi nằm trong từ khác.
-  if (tracked.name === "VT") {
-    return /\bvt\b/i.test(name) || /^vt[\s_\-]/i.test(name) || name.trim().toLowerCase() === "vt";
-  }
-  if (tracked.name === "Natura" || tracked.name === "Olay") {
-    return new RegExp(`\\b${tracked.name}\\b`, "i").test(name);
-  }
-  const norm = (s) => String(s).toLowerCase().replace(/[\s._\-]+/g, "");
-  return norm(name).includes(norm(tracked.name));
-}
-
 function LineChart({ points, width = 760, height = 180 }) {
   // points: [{day, value}] đã sort theo ngày tăng dần. Vẽ area chart SVG tay, không dùng lib
   // ngoài — dữ liệu nhỏ (tối đa 30 điểm), không cần thư viện chart nặng.
@@ -167,8 +153,14 @@ export default function BrandsDashboard() {
         const trendMap = new Map();
         for (const c of countries) {
           const suffix = `?country=${encodeURIComponent(c)}&category=${cat}`;
+          // Riêng /api/brands KHÔNG lọc category (26/10/2026 — sửa lỗi Medicube biến mất):
+          // Page quét qua từ khóa brand thì guessCategory trả null nên categories trống, gọi
+          // kèm category mỹ phẩm sẽ nuốt mất cả brand dù DB có đủ ad. Lọc mỹ phẩm/chưa có
+          // category chuyển xuống trackedPages (isCosmeticsOrUnknownPage) — bảng từ khóa và
+          // biểu đồ xu hướng vẫn lấy đúng category mỹ phẩm như cũ.
+          const brandSuffix = `?country=${encodeURIComponent(c)}`;
           const [brandsRes, kwRes, trendRes] = await Promise.all([
-            fetch(`${API_BASE}/api/brands${suffix}`),
+            fetch(`${API_BASE}/api/brands${brandSuffix}`),
             fetch(`${API_BASE}/api/keywords${suffix}`),
             fetch(`${API_BASE}/api/trend${suffix}`),
           ]);
@@ -334,7 +326,10 @@ export default function BrandsDashboard() {
   // không còn 4 dòng Seyoul riêng lẻ như ảnh Đăng gửi).
   // Không còn chế độ xem tất cả Page — muốn xem long-tail thì bảo em thêm lại 1 nút duy nhất.
   const trackedPages = useMemo(
-    () => brandStats.filter((page) => TRACKED_BRANDS.some((tb) => pageMatchesTracked(page, tb))),
+    // Giữ Page chưa có category (quét từ khóa brand, VD Medicube) hoặc có category mỹ phẩm;
+    // loại Page đã xếp rõ sang ngành khác (VD "Mundo de Artesanías y Manualidades" khớp chuỗi
+    // "anua" và "Roca Natura" khớp từ "Natura" nhưng đều là đồ gia dụng) — xem isCosmeticsOrUnknownPage.
+    () => brandStats.filter((page) => isCosmeticsOrUnknownPage(page) && TRACKED_BRANDS.some((tb) => pageMatchesTracked(page, tb))),
     [brandStats]
   );
   const brandGroups = useMemo(() => {

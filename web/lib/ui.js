@@ -57,6 +57,37 @@ export const CHECKLIST_BRANDS = [
   { name: "Mary Kay", keys: ["mary kay", "marykay"] },
 ];
 
+// Khớp 1 Page với 1 brand trong checklist — dùng chung cho Dashboard (gộp Page thành Brand)
+// và tab Quảng cáo (khóa về checklist). Logic giữ nguyên từ web/pages/brands.js:
+//   VT, Natura, Olay: khớp theo TỪ độc lập — "Naturales" không được tính là "Natura",
+//   "VT" không được tính khi nằm trong từ khác (VD "VT" trong "Private").
+//   Các brand còn lại: khớp chuỗi sau khi chuẩn hoá (bỏ khoảng trắng/dấu chấm/gạch dưới/
+//   gạch nối, không phân biệt hoa thường) — VD "Dr. Althea" khớp "DrAlthea", "SKIN1004"
+//   khớp "skin1004".
+export function pageMatchesTracked(page, tracked) {
+  const name = String(page.page_name || "");
+  if (tracked.name === "VT") {
+    return /\bvt\b/i.test(name) || /^vt[\s_\-]/i.test(name) || name.trim().toLowerCase() === "vt";
+  }
+  if (tracked.name === "Natura" || tracked.name === "Olay") {
+    return new RegExp(`\\b${tracked.name}\\b`, "i").test(name);
+  }
+  const norm = (s) => String(s).toLowerCase().replace(/[\s._\-]+/g, "");
+  return norm(name).includes(norm(tracked.name));
+}
+
+// Giữ Page khi chưa có category HOẶC có category Mỹ phẩm & Làm đẹp — dùng chung cho
+// Dashboard và tab Quảng cáo khi khóa về checklist (26/10/2026 — Đăng yêu cầu):
+//   Ad quét qua từ khóa brand thì guessCategory trả null (VD toàn bộ 29 Page Medicube đều
+//   categories = null) nên KHÔNG được dùng lọc category của API để loại chúng, nếu không
+//   brand sẽ biến mất khỏi Dashboard dù DB có đủ ad.
+//   Ngược lại, Page đã được xếp rõ sang ngành khác thì loại — VD "Mundo de Artesanías y
+//   Manualidades" khớp chuỗi "anua" và "Roca Natura" khớp từ "Natura" nhưng cả 2 đều là
+//   đồ gia dụng, không phải mỹ phẩm.
+export function isCosmeticsOrUnknownPage(page) {
+  const cats = page.categories || [];
+  return cats.length === 0 || cats.includes("Mỹ phẩm & Làm đẹp");
+}
 
 export const MEDIA_TYPE_LABELS = { video: "Video", image: "Hình ảnh", none: "Không có ảnh/video" };
 

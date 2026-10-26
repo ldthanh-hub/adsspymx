@@ -6,6 +6,8 @@ import {
   MARKET_LABELS,
   MARKET_CODES,
   CHECKLIST_BRANDS,
+  pageMatchesTracked,
+  isCosmeticsOrUnknownPage,
   MEDIA_TYPE_LABELS,
   industryLabelVi,
   guessCategory,
@@ -32,6 +34,15 @@ export default function Home() {
   const [ads, setAds] = useState([]);
   const [keywordStats, setKeywordStats] = useState([]);
   const [brandStats, setBrandStats] = useState([]);
+  // allBrandStats: Page KHÔNG lọc category (khác brandStats vẫn lọc mỹ phẩm như cũ) — nguồn
+  // duy nhất để tính danh sách Page thuộc checklist (Page quét từ khóa brand chưa có category,
+  // VD Medicube, chỉ có ở đây). statsLoaded báo fetchStats đã chạy xong để fetchAds ở chế độ
+  // khóa checklist không gọi API khi chưa có danh sách Page.
+  const [allBrandStats, setAllBrandStats] = useState([]);
+  const [statsLoaded, setStatsLoaded] = useState(false);
+  // Khóa tab Quảng cáo về checklist 30 brand (Đăng yêu cầu 26/10/2026) — mặc định BẬT: danh
+  // sách thường chỉ hiện ad của Page thuộc checklist, bấm "Tất cả ad" mới xem toàn bộ.
+  const [checklistOnly, setChecklistOnly] = useState(true);
 
   const [selectedKeywords, setSelectedKeywords] = useState(new Set());
   const [selectedBrands, setSelectedBrands] = useState(new Set());
@@ -82,6 +93,19 @@ export default function Home() {
     }
   }, [router.isReady, router.query.brand]);
 
+  // Danh sách Page thuộc checklist 30 brand — cùng logic gộp với Dashboard (khớp tên Page +
+  // giữ Page chưa có category hoặc có category mỹ phẩm, loại Page xếp rõ sang ngành khác).
+  // Nguồn ưu tiên allBrandStats (không lọc category); nếu lần gọi đó lỗi thì rớt về brandStats
+  // (lọc mỹ phẩm — vẫn đủ 17 brand đã hiện, chỉ thiếu Page chưa có category như Medicube).
+  // Đặt TRƯỚC fetchAds vì fetchAds dùng nó trong deps array (deps được tính ngay khi render,
+  // khai báo sau fetchAds sẽ lỗi "Cannot access before initialization" lúc build).
+  const checklistPages = useMemo(() => {
+    const source = allBrandStats.length ? allBrandStats : brandStats;
+    return source.filter(
+      (b) => isCosmeticsOrUnknownPage(b) && CHECKLIST_BRANDS.some((tb) => pageMatchesTracked(b, tb))
+    );
+  }, [allBrandStats, brandStats]);
+
   const fetchStats = useCallback(async () => {
     if (!API_BASE) return;
     try {
@@ -96,16 +120,21 @@ export default function Home() {
       const cat = encodeURIComponent("Mỹ phẩm & Làm đẹp");
       const kwLists = [];
       const brandLists = [];
+      const allBrandLists = [];
       for (const c of countries) {
         const suffix = `?country=${encodeURIComponent(c)}&category=${cat}`;
-        const [kwRes, brandRes] = await Promise.all([
+        const [kwRes, brandRes, allBrandRes] = await Promise.all([
           fetch(`${API_BASE}/api/keywords${suffix}`),
           fetch(`${API_BASE}/api/brands${suffix}`),
+          // Riêng danh sách Page checklist KHÔNG lọc category (26/10/2026 — sửa lỗi Medicube):
+          // Page quét từ khóa brand chưa có category sẽ không bao giờ lọt vào brandLists trên.
+          fetch(`${API_BASE}/api/brands?country=${encodeURIComponent(c)}`),
         ]);
         // Backend cũ chưa có tham số category (zod sẽ bỏ qua key lạ) nên vẫn trả đủ dữ liệu —
         // lọc Mỹ phẩm & Làm đẹp và gộp ở dưới sẽ xử lý nốt, không phụ thuộc vào backend mới.
         if (kwRes.ok) kwLists.push((await kwRes.json()).data || []);
         if (brandRes.ok) brandLists.push((await brandRes.json()).data || []);
+        if (allBrandRes.ok) allBrandLists.push((await allBrandRes.json()).data || []);
       }
       const kwMap = new Map();
       for (const list of kwLists)
@@ -129,9 +158,23 @@ export default function Home() {
           } else brandMap.set(b.page_name, { ...b });
         }
       setBrandStats([...brandMap.values()].sort((a, b) => Number(b.total) - Number(a.total)));
+      // Gộp danh sách Page không lọc category giống cách gộp brandMap ở trên (cùng Page ở 2
+      // thị trường thì cộng dồn ad + hợp categories) — nguồn tính checklistPages ở dưới.
+      const allBrandMap = new Map();
+      for (const list of allBrandLists)
+        for (const b of list) {
+          const prev = allBrandMap.get(b.page_name);
+          if (prev) {
+            prev.total = String(Number(prev.total) + Number(b.total));
+            prev.active = String(Number(prev.active) + Number(b.active));
+            prev.categories = [...new Set([...(prev.categories || []), ...(b.categories || [])])];
+          } else allBrandMap.set(b.page_name, { ...b });
+        }
+      setAllBrandStats([...allBrandMap.values()].sort((a, b) => Number(b.total) - Number(a.total)));
     } catch {
       /* sidebar stats không critical — im lặng bỏ qua, bảng chính vẫn hoạt động */
     }
+    setStatsLoaded(true);
   }, [countryFilter]);
 
   const fetchAds = useCallback(
@@ -140,6 +183,9 @@ export default function Home() {
         setError("Chưa cấu hình NEXT_PUBLIC_API_BASE — xem web/.env.example");
         return;
       }
+      // Chế độ khóa checklist chưa có danh sách Page thì chưa gọi API — fetchStats xong sẽ
+      // đổi statsLoaded/checklistPages, fetchAds đổi theo và effect dưới tự gọi lại.
+      if (!brandSearch && checklistOnly && !statsLoaded) return;
       const isFirstPage = offset === 0;
       isFirstPage ? setLoading(true) : setLoadingMore(true);
       setError(null);
@@ -150,6 +196,22 @@ export default function Home() {
           // Không gửi category khi tìm brand: ad cũ có category trống (VD Medicube quét tay
           // 16/09, category None) vẫn phải hiện, và ad affiliate cũng có thể không gắn category
           // mỹ phẩm. Vẫn giữ lọc quốc gia + trạng thái + loại nội dung ở dưới.
+        } else if (checklistOnly) {
+          // Khóa tab về checklist 30 brand: chỉ hiện ad của Page thuộc checklist, lọc bằng
+          // page_names CHÍNH XÁC (khác brandSearch khớp chuỗi rộng) để phân trang vẫn đúng
+          // phía server. Không gửi category — giống đường brandSearch — để ad chưa gắn
+          // category (VD Medicube) vẫn hiện. Từ khoá ngành + tìm nội dung vẫn AND thêm được.
+          let names = checklistPages.map((p) => p.page_name);
+          if (selectedBrands.size) names = names.filter((n) => selectedBrands.has(n));
+          if (!names.length) {
+            setAds([]);
+            setHasMore(false);
+            offsetRef.current = 0;
+            return;
+          }
+          params.set("page_names", names.join(","));
+          if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
+          if (debouncedContentSearch) params.set("q", debouncedContentSearch);
         } else {
           if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
           if (selectedBrands.size) params.set("page_names", Array.from(selectedBrands).join(","));
@@ -177,7 +239,7 @@ export default function Home() {
         setLoadingMore(false);
       }
     },
-    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter, brandSearch]
+    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter, brandSearch, checklistOnly, checklistPages, statsLoaded]
   );
 
   useEffect(() => {
@@ -298,19 +360,23 @@ export default function Home() {
 
   const visibleBrands = useMemo(() => {
     const text = brandFilterText.trim().toLowerCase();
-    // Chỉ liệt kê Page thuần Mỹ phẩm & Làm đẹp: loại Page có category lẫn Thời trang
+    // Khi khóa về checklist thì dropdown Thương hiệu cũng chỉ liệt kê Page thuộc checklist
+    // (để không chọn lọt Page ngoài checklist rồi phá khóa); khi mở khóa thì giữ logic cũ:
+    // chỉ liệt kê Page thuần Mỹ phẩm & Làm đẹp: loại Page có category lẫn Thời trang
     // (VD SHEIN Mexico có cả 2 category trong DB, nên dù backend đã lọc ad theo category thì
     // Page đó vẫn lọt vào danh sách nếu chỉ lọc theo categories.includes). Page không có
     // categories (dữ liệu cũ hiếm) thì giữ lại để không mất brand thật.
     // Không áp ngưỡng số ad ở sidebar (Đăng đính chính 26/10/2026): affiliate chỉ có 1-2 ad
     // vẫn phải hiện, vì mục tiêu là khai thác tối đa brand đối thủ. Chỉ lọc thuần mỹ phẩm như cũ.
     // Muốn tìm nhanh 1 brand cụ thể thì dùng ô "Tìm thương hiệu" ở dưới thanh lọc.
-    let list = brandStats.filter(
-      (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
-    );
+    let list = checklistOnly
+      ? checklistPages
+      : brandStats.filter(
+          (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
+        );
     if (text) list = list.filter((b) => b.page_name.toLowerCase().includes(text));
     return showAllBrands || text ? list : list.slice(0, 30);
-  }, [brandStats, brandFilterText, showAllBrands]);
+  }, [brandStats, brandFilterText, showAllBrands, checklistOnly, checklistPages]);
 
   return (
     <Layout
@@ -396,6 +462,22 @@ export default function Home() {
             </button>
             <button className={sortMode === "newest" ? "active" : ""} onClick={() => setSortMode("newest")}>
               Mới phát hiện
+            </button>
+          </div>
+
+          <div className="pill-toggle">
+            <span className="pill-group-label">Phạm vi</span>
+            <button
+              className={checklistOnly ? "active" : ""}
+              onClick={() => {
+                setChecklistOnly(true);
+                setSelectedBrands(new Set());
+              }}
+            >
+              Chỉ checklist
+            </button>
+            <button className={!checklistOnly ? "active" : ""} onClick={() => setChecklistOnly(false)}>
+              Tất cả ad
             </button>
           </div>
 
@@ -516,6 +598,13 @@ export default function Home() {
             Đang tìm brand: <strong>{brandSearch}</strong> — hiện tất cả ad liên quan (brand chính + affiliate /
             influencer nhắc tới brand), không lọc category, và trạng thái đã chuyển sang Tất cả để hiện cả ad đã dừng. Bấm “Xóa tìm kiếm” để quay lại
             danh sách thường.
+          </p>
+        )}
+
+        {checklistOnly && !brandSearch && (
+          <p className="hint-text" style={{ marginTop: "8px" }}>
+            Đang khóa tab này về 30 brand trong checklist — chỉ hiện ad của Page thuộc checklist
+            (kể cả ad chưa gắn category như Medicube). Bấm “Tất cả ad” ở thanh lọc để xem toàn bộ.
           </p>
         )}
 
