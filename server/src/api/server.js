@@ -42,6 +42,12 @@ const listQuerySchema = z.object({
   // bộ lọc "Thương hiệu thực tế" (sourced từ /api/brands), cũng cho phép chọn nhiều.
   page_names: z.string().max(4000).optional(),
   page_name: z.string().max(200).optional(),
+  // brand: tìm thương hiệu theo tên — khớp OR: tên Page CHỨA tên brand (kể cả ad đăng chung
+  // "X with Brand" và affiliate/influencer) HOẶC nội dung ad nhắc tới brand HOẶC từ khóa quét
+  // đúng tên brand. Khác với page_names (khớp CHÍNH XÁC tên Page) và q (chỉ tìm trong nội dung).
+  // Dùng cho ô "Tìm thương hiệu" ở trang chính — khi tìm brand thì frontend KHÔNG gửi kèm
+  // category để ad cũ có category trống (VD Medicube quét tay 16/09) cũng hiện ra.
+  brand: z.string().max(200).optional(),
   // q: tìm full-text trong NỘI DUNG quảng cáo (creative_text) — khác với page_name (tên trang).
   // Cho phép kết hợp với keyword/page_names: VD keyword=skincare + page_names=Pai Pai + q=descuento
   // => ad của Pai Pai, thuộc nhóm skincare, có chữ "descuento" trong nội dung.
@@ -83,6 +89,7 @@ app.get("/api/ads", async (req, res, next) => {
       keyword,
       page_names,
       page_name,
+      brand,
       q,
       country,
       category,
@@ -113,6 +120,13 @@ app.get("/api/ads", async (req, res, next) => {
     if (page_name) {
       values.push(`%${page_name}%`);
       conditions.push(`page_name ILIKE $${values.length}`);
+    }
+    if (brand) {
+      values.push(`%${brand}%`);
+      // Cùng 1 placeholder $n dùng 3 lần — pg cho phép, và cả 3 điều kiện đều dùng cùng chuỗi %brand%.
+      conditions.push(
+        `(page_name ILIKE $${values.length} OR creative_text ILIKE $${values.length} OR keyword ILIKE $${values.length})`
+      );
     }
     if (q) {
       values.push(`%${q}%`);

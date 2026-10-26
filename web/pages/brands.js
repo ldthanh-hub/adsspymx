@@ -158,12 +158,25 @@ export default function BrandsDashboard() {
     })();
   }, [countryFilter]);
 
+  // Ngưỡng hiển thị do Đăng chốt 26/10/2026: chỉ brand có từ 5 ad trở lên mới liệt kê.
+  // Lý do: danh sách gộp MX+US trước đây lên tới 775 brand, trong đó 474 brand chỉ có đúng
+  // 1 ad (nhà bán lẻ, tạp chí, influencer, trang lạ kéo về qua từ khóa ngành chung) và 337
+  // brand đã dừng chạy — lọc >=5 ad còn 87 brand, đúng nhóm đối thủ đáng theo dõi. Ngưỡng này
+  // áp cho CẢ số đếm ở thẻ thống kê, Top 10 và bảng danh sách (trước đây thẻ thống kê đếm
+  // brandStats chưa lọc nên vẫn hiện 775 dù bảng đã lọc category, gây hiểu nhầm là brand cũ
+  // chưa xóa). Khi chọn riêng MX hoặc US, total là total của thị trường đó, ngưỡng vẫn là 5.
+  const MIN_BRAND_TOTAL = 5;
+  const displayBrands = useMemo(
+    () => brandStats.filter((b) => Number(b.total || 0) >= MIN_BRAND_TOTAL),
+    [brandStats]
+  );
+
   const totals = useMemo(() => {
-    const totalAds = brandStats.reduce((s, b) => s + Number(b.total || 0), 0);
-    const totalActive = brandStats.reduce((s, b) => s + Number(b.active || 0), 0);
-    const longest = brandStats.reduce((m, b) => Math.max(m, Number(b.max_days_active) || 0), 0);
-    return { totalBrands: brandStats.length, totalAds, totalActive, longest };
-  }, [brandStats]);
+    const totalAds = displayBrands.reduce((s, b) => s + Number(b.total || 0), 0);
+    const totalActive = displayBrands.reduce((s, b) => s + Number(b.active || 0), 0);
+    const longest = displayBrands.reduce((m, b) => Math.max(m, Number(b.max_days_active) || 0), 0);
+    return { totalBrands: displayBrands.length, totalAds, totalActive, longest };
+  }, [displayBrands]);
 
   const trendPoints = useMemo(
     () => trend.map((t) => ({ day: t.day, value: Number(t.ads_discovered) })),
@@ -179,25 +192,40 @@ export default function BrandsDashboard() {
   );
 
   const topActiveBrands = useMemo(
-    () => [...brandStats].sort((a, b) => Number(b.active) - Number(a.active)).slice(0, 10),
-    [brandStats]
+    () => [...displayBrands].sort((a, b) => Number(b.active) - Number(a.active)).slice(0, 10),
+    [displayBrands]
   );
 
   const filteredTable = useMemo(() => {
+    const text = debouncedTableSearch.trim().toLowerCase();
+    // Khi ĐANG tìm kiếm theo tên brand thì bypass ngưỡng >=5 và tìm cả theo từ khóa gắn với Page
+    // (b.keywords) — VD gõ "Medicube" sẽ ra cả Page "X with Medicube" dù mỗi Page chỉ có 1-2 ad.
+    // Khi không tìm kiếm thì quay lại danh sách gọn displayBrands (>=5 ad, thuần mỹ phẩm).
+    if (text) {
+      return [...brandStats]
+        .filter(
+          (b) =>
+            b.page_name.toLowerCase().includes(text) ||
+            (b.keywords || []).some((k) => String(k).toLowerCase().includes(text))
+        )
+        .sort((a, b) => {
+          if (tableSort === "active") return Number(b.active) - Number(a.active);
+          if (tableSort === "endurance") return Number(b.max_days_active || 0) - Number(a.max_days_active || 0);
+          return Number(b.total) - Number(a.total);
+        });
+    }
     // Chỉ liệt kê thương hiệu thuần Mỹ phẩm & Làm đẹp (xem ghi chú ở web/pages/index.js) —
     // loại Page lẫn category Thời trang (VD SHEIN Mexico) khỏi danh sách đối thủ mỹ phẩm.
-    let rows = brandStats.filter(
+    let rows = displayBrands.filter(
       (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
     );
-    const text = debouncedTableSearch.trim().toLowerCase();
-    if (text) rows = rows.filter((b) => b.page_name.toLowerCase().includes(text));
     const sorted = [...rows].sort((a, b) => {
       if (tableSort === "active") return Number(b.active) - Number(a.active);
       if (tableSort === "endurance") return Number(b.max_days_active || 0) - Number(a.max_days_active || 0);
       return Number(b.total) - Number(a.total);
     });
     return sorted;
-  }, [brandStats, debouncedTableSearch, tableSort]);
+  }, [displayBrands, brandStats, debouncedTableSearch, tableSort]);
 
   return (
     <Layout active="brands">
@@ -304,7 +332,8 @@ export default function BrandsDashboard() {
               </div>
               <p className="panel-sub">
                 Ngành hàng gắn cứng theo cấu hình từ khóa/thương hiệu (server/src/config/keywords.js), không suy đoán
-                bằng cách so chuỗi tên. Sản phẩm/website/TikTok chưa có nguồn dữ liệu tự động — có thể bổ sung thủ
+                bằng cách so chuỗi tên. Chỉ liệt kê brand có từ 5 ad trở lên (loại 474 brand chỉ có 1 ad).
+                Sản phẩm/website/TikTok chưa có nguồn dữ liệu tự động — có thể bổ sung thủ
                 công sau.
               </p>
               <div className="table-wrap">

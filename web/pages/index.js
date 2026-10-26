@@ -41,6 +41,14 @@ export default function Home() {
   const [countryFilter, setCountryFilter] = useState(""); // "" = tất cả thị trường CÒN LẠI (MX+US) | "MX" | "US" — từ 26/10/2026 không còn nghĩa là gộp KR/TH/MY nữa
   const [mediaTypeFilter, setMediaTypeFilter] = useState(""); // "" = tất cả | "video" | "image"
   const [contentSearch, setContentSearch] = useState(""); // tìm trong nội dung quảng cáo (q)
+  // Tìm thương hiệu theo tên (Đăng yêu cầu 26/10/2026): hiện ĐẦY ĐỦ ad liên quan — ad của brand
+  // chính + ad affiliate/influencer nhắc tới brand — chứ không chỉ ad của 1 Page khớp chính xác.
+  // brandSearch là giá trị ĐÃ áp dụng (khác brandSearchInput là ô đang gõ), để tránh gọi API
+  // mỗi lần gõ 1 ký tự. Khi brandSearch có giá trị, fetchAds dùng tham số brand của backend và
+  // BỎ lọc category + bỏ chọn ngành hàng/thương hiệu trong dropdown (vì lọc AND với chúng sẽ
+  // thu hẹp lại đúng cái cần tránh), đồng thời bypass ngưỡng >=5 ad của dropdown Thương hiệu.
+  const [brandSearchInput, setBrandSearchInput] = useState("");
+  const [brandSearch, setBrandSearch] = useState("");
   const debouncedContentSearch = useDebouncedValue(contentSearch, 400);
 
   // Panel "Yêu cầu quét từ khóa mới" (hiện khi search không ra kết quả) — xem khối JSX phía dưới.
@@ -136,11 +144,18 @@ export default function Home() {
       setError(null);
       try {
         const params = new URLSearchParams();
-        if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
-        if (selectedBrands.size) params.set("page_names", Array.from(selectedBrands).join(","));
-        if (debouncedContentSearch) params.set("q", debouncedContentSearch);
+        if (brandSearch) {
+          params.set("brand", brandSearch);
+          // Không gửi category khi tìm brand: ad cũ có category trống (VD Medicube quét tay
+          // 16/09, category None) vẫn phải hiện, và ad affiliate cũng có thể không gắn category
+          // mỹ phẩm. Vẫn giữ lọc quốc gia + trạng thái + loại nội dung ở dưới.
+        } else {
+          if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
+          if (selectedBrands.size) params.set("page_names", Array.from(selectedBrands).join(","));
+          if (debouncedContentSearch) params.set("q", debouncedContentSearch);
+          params.set("category", "Mỹ phẩm & Làm đẹp");
+        }
         params.set("country", countryFilter || "MX,US");
-        params.set("category", "Mỹ phẩm & Làm đẹp");
         if (mediaTypeFilter) params.set("media_type", mediaTypeFilter);
         if (statusFilter === "active") params.set("active_only", "true");
         else if (statusFilter === "inactive") params.set("active_only", "false");
@@ -161,7 +176,7 @@ export default function Home() {
         setLoadingMore(false);
       }
     },
-    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter]
+    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter, brandSearch]
   );
 
   useEffect(() => {
@@ -172,6 +187,23 @@ export default function Home() {
     offsetRef.current = 0;
     fetchAds(0);
   }, [fetchAds]);
+
+  const submitBrandSearch = () => {
+    const value = brandSearchInput.trim();
+    if (!value) return;
+    setBrandSearch(value);
+    // Hiện đầy đủ ad liên quan nên mặc định chuyển trạng thái sang "Tất cả" (cả đang chạy và
+    // đã dừng) — nếu giữ mặc định "Đang chạy" thì các ad cũ như Medicube (30 ad, 0 ad đang chạy
+    // ở MX/US) sẽ hiện ra 0 kết quả dù DB có đủ ad. User vẫn chỉnh lại trạng thái sau đó nếu muốn.
+    setStatusFilter("all");
+    // Xóa chọn dropdown để không AND với brand search (xem ghi chú ở fetchAds).
+    setSelectedBrands(new Set());
+    setSelectedKeywords(new Set());
+  };
+  const clearBrandSearch = () => {
+    setBrandSearch("");
+    setBrandSearchInput("");
+  };
 
   const refreshAll = () => {
     fetchStats();
@@ -252,8 +284,13 @@ export default function Home() {
     // (VD SHEIN Mexico có cả 2 category trong DB, nên dù backend đã lọc ad theo category thì
     // Page đó vẫn lọt vào danh sách nếu chỉ lọc theo categories.includes). Page không có
     // categories (dữ liệu cũ hiếm) thì giữ lại để không mất brand thật.
+    // Ngưỡng hiển thị do Đăng chốt 26/10/2026: chỉ brand có từ 5 ad trở lên (xem web/pages/brands.js)
+    // — sidebar Thương hiệu ở trang chính cũng phải gọn như Dashboard, không liệt kê lại 474
+    // brand chỉ có 1 ad.
     let list = brandStats.filter(
-      (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
+      (b) =>
+        Number(b.total || 0) >= 5 &&
+        (!b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp"))
     );
     if (text) list = list.filter((b) => b.page_name.toLowerCase().includes(text));
     return showAllBrands || text ? list : list.slice(0, 30);
@@ -406,15 +443,42 @@ export default function Home() {
                   </span>
                 </label>
               ))}
-              {!showAllBrands && !brandFilterText && brandStats.length > 30 && (
+              {!showAllBrands && !brandFilterText && visibleBrands.length === 30 && (
                 <button className="show-more-link" onClick={() => setShowAllBrands(true)}>
-                  Hiện tất cả {brandStats.length} thương hiệu
+                  Hiện tất cả thương hiệu
                 </button>
               )}
               {brandStats.length === 0 && <p className="muted small dd-empty">Chưa có dữ liệu — job fetch chưa chạy lần nào.</p>}
             </div>
           </Dropdown>
         </div>
+
+        <div className="brand-search-bar" style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "12px" }}>
+          <input
+            style={{ flex: 1, padding: "9px 12px", borderRadius: "8px", border: "1px solid #dcdee8", fontSize: "13px" }}
+            placeholder="Tìm thương hiệu (VD: Medicube, Anua...) — hiện cả ad của brand chính và affiliate"
+            value={brandSearchInput}
+            onChange={(e) => setBrandSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitBrandSearch();
+            }}
+          />
+          <button className="btn-refresh" onClick={submitBrandSearch} disabled={!brandSearchInput.trim()}>
+            Tìm brand
+          </button>
+          {brandSearch && (
+            <button className="btn-refresh" onClick={clearBrandSearch}>
+              Xóa tìm kiếm
+            </button>
+          )}
+        </div>
+        {brandSearch && (
+          <p className="hint-text" style={{ marginTop: "8px" }}>
+            Đang tìm brand: <strong>{brandSearch}</strong> — hiện tất cả ad liên quan (brand chính + affiliate /
+            influencer nhắc tới brand), không giới hạn 5 ad, không lọc category, và trạng thái đã chuyển sang Tất cả để hiện cả ad đã dừng. Bấm “Xóa tìm kiếm” để quay lại
+            danh sách thường.
+          </p>
+        )}
 
         <p className="hint-text bar-hint">
           Ngành hàng + Thương hiệu kết hợp được với nhau (VD: chọn "Chăm sóc da" + "Pai Pai"). Không có bộ lọc "Nền
