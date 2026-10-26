@@ -1,0 +1,28 @@
+name: Test TikTok TikWM (không ghi DB)
+
+# Test 1 lần duy nhất, CHỈ chạy tay — không có lịch tự động, không ghi DB, không cần secret.
+# Mục đích: kiểm tra xem từ máy chạy GitHub Actions, TikWM user/info và feed/search có trả
+# JSON không, hay vẫn bị Cloudflare chặn như trên máy VM (VM chỉ qua được challenge/info).
+# Cách dùng: push patch lên main, vào repo > tab Actions > workflow này > Run workflow >
+# chờ chạy xong (khoảng 1-2 phút) > mở log > copy bảng TÓM TẮT ở cuối gửi cho Muse.
+# Script luôn exit 0 kể cả khi bị chặn, vì "bị chặn" là kết quả test hợp lệ — workflow hiện
+# xanh là bình thường, đọc kết quả ở bảng TÓM TẮT chứ không nhìn màu xanh/đỏ.
+on:
+  workflow_dispatch:
+
+jobs:
+  test-tiktok:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Không cần npm install: script chỉ dùng fetch có sẵn của Node 20, không cần dependency nào.
+      - name: Chạy test TikWM
+        run: node src/jobs/testTikTok.js
