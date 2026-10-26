@@ -124,9 +124,7 @@ export default function BrandsDashboard() {
   const [socialData, setSocialData] = useState([]);
   const [creativeData, setCreativeData] = useState({ angles: [], offers: [], examples: [] });
   const [tiktokSignals, setTiktokSignals] = useState([]);
-  const [mercadoSignals, setMercadoSignals] = useState([]);
   const [trendsSignals, setTrendsSignals] = useState([]);
-  const [signalRuns, setSignalRuns] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null); // tên Brand đang LỌC toàn bộ dashboard (null = tất cả brand)
 
   const [brandTrend, setBrandTrend] = useState([]);
@@ -225,9 +223,7 @@ export default function BrandsDashboard() {
       };
       await Promise.all([
         load("/api/signals/tiktok", setTiktokSignals),
-        load("/api/signals/mercado", setMercadoSignals),
         load("/api/signals/trends", setTrendsSignals),
-        load("/api/signals/runs", setSignalRuns),
       ]);
     })();
   }, []);
@@ -520,7 +516,7 @@ export default function BrandsDashboard() {
     [websiteData, selectedBrand, selectedRow]
   );
 
-  // Social: gom theo brand -> { youtube, facebook, instagram } để vẽ 1 dòng / brand.
+  // Social: gom theo brand -> { youtube, facebook } để vẽ 1 dòng / brand.
   const socialByBrand = useMemo(() => {
     const map = new Map();
     for (const r of socialData) {
@@ -531,52 +527,6 @@ export default function BrandsDashboard() {
     return [...map.values()].sort((a, b) => a.brand.localeCompare(b.brand));
   }, [socialData, selectedBrand, selectedRow]);
 
-
-  // Mercado: gom listing theo brand — tổng đã bán chỉ tính các listing có sold_quantity,
-  // listing không parse được số bán thì không cộng vào (không đoán), giá lấy min/max có thật.
-  const mercadoSummary = useMemo(() => {
-    const map = new Map();
-    for (const row of mercadoSignals.filter((r) => signalMatchesFilter(r.brand))) {
-      const prev = map.get(row.brand) || {
-        brand: row.brand,
-        count: 0,
-        totalSold: 0,
-        soldKnown: 0,
-        minPrice: null,
-        maxPrice: null,
-        top: null,
-        fetched_at: row.fetched_at,
-      };
-      prev.count += 1;
-      if (row.sold_quantity != null) {
-        prev.totalSold += Number(row.sold_quantity);
-        prev.soldKnown += 1;
-        if (!prev.top || Number(row.sold_quantity) > Number(prev.top.sold_quantity)) prev.top = row;
-      }
-      if (row.price != null) {
-        prev.minPrice = prev.minPrice == null ? Number(row.price) : Math.min(prev.minPrice, Number(row.price));
-        prev.maxPrice = prev.maxPrice == null ? Number(row.price) : Math.max(prev.maxPrice, Number(row.price));
-      }
-      if (row.fetched_at > prev.fetched_at) prev.fetched_at = row.fetched_at;
-      map.set(row.brand, prev);
-    }
-    return [...map.values()].sort((a, b) => b.totalSold - a.totalSold);
-  }, [mercadoSignals, selectedBrand, selectedRow]);
-
-  // Trạng thái chạy gần nhất theo nguồn — để panel hiện đúng "đang chạy tốt / bị chặn / lỗi"
-  // thay vì im lặng khi không có số.
-  const runStatusBySource = useMemo(() => {
-    const map = {};
-    for (const r of signalRuns) {
-      if (!map[r.source] || (r.finished_at || "") > (map[r.source].finished_at || "")) map[r.source] = r;
-    }
-    return map;
-  }, [signalRuns]);
-
-  const mercadoBlocked = useMemo(
-    () => signalRuns.filter((r) => r.source === "mercado" && (r.status === "blocked" || r.status === "error")),
-    [signalRuns]
-  );
 
   // TikTok: xếp theo lượt xem hashtag tích lũy (số này là tổng tích lũy, so sánh được giữa
   // các brand — khác với Trends, mỗi brand chuẩn hóa riêng). VT và Round Lab dùng hashtag
@@ -667,14 +617,7 @@ export default function BrandsDashboard() {
                 )}
               </div>
               <p className="panel-sub">
-                Trang này CHỈ hiện checklist 30 brand (11 brand của Đăng + 19 brand mỹ phẩm/chăm sóc
-                da lớn tại Mỹ và Mexico, chốt ngày 26/10/2026), mỗi brand là 1 dòng duy nhất đã gộp
-                tất cả Page của brand đó (VD Seyoul Mexico + Seyoul MX + Seyoul Cosméticos gộp thành
-                1 dòng "Seyoul") — không còn kéo hết hàng trăm Page phát hiện qua từ khóa ngành
-                như Luum, MAC. Chọn 1 brand thì TOÀN BỘ số liệu trên trang này chỉ tính cho brand
-                đó: thẻ thống kê, biểu đồ xu hướng, Top 10, bảng tương tác, affiliate, bảng danh
-                sách và cả 3 panel tín hiệu Google / Mercado / TikTok. Bấm tên brand trong bất kỳ
-                bảng nào cũng lọc giống vậy.
+                Trang này chỉ hiện checklist 30 brand (11 brand của Đăng + 19 brand lớn tại Mỹ và Mexico), mỗi brand gộp tất cả Page thành 1 dòng. Chọn 1 brand thì toàn bộ số liệu trên trang chỉ tính cho brand đó. Bấm tên brand trong bất kỳ bảng nào cũng lọc giống vậy.
               </p>
               <div className="table-controls" style={{ marginTop: 8 }}>
                 <select
@@ -807,10 +750,7 @@ export default function BrandsDashboard() {
               <div className="panel">
                 <h3>Top 10 brand — tương tác cao nhất</h3>
                 <p className="panel-sub">
-                  Tương tác = like + comment + share cộng dồn mọi ad (không tính video views — view khác đơn vị).
-                  Số liệu là best-effort từ Meta Ad Library: ad không gắn post công khai thì không parse được
-                  tương tác, nên brand có tỉ lệ parse thấp thì số này bị thiếu, không phải "không ai tương tác".
-                  Số 0 ở đây nghĩa là chưa có ad nào của brand đó được parse tương tác (backend đã deploy bản mới, /api/brands MX đã trả 861 dòng ngày 26/10/2026 — không phải do chưa deploy). Tương tác chỉ parse được cho ad gắn post công khai, và mỗi lần cron chỉ parse tối đa 30 ad mới, nên brand mới sẽ lên dần theo các lần cron tới, không lên ngay trong ngày đầu.
+                  Tương tác = like + bình luận + chia sẻ cộng dồn mọi ad (không tính video views). Chỉ parse được ad gắn post công khai nên số có thể thiếu — số 0 nghĩa là chưa parse được tương tác, không phải “không ai tương tác”.
                 </p>
                 <div className="table-wrap">
                   <table>
@@ -849,9 +789,7 @@ export default function BrandsDashboard() {
               <div className="panel">
                 <h3>Affiliate / Page đăng chung — top 10 theo tổng ad</h3>
                 <p className="panel-sub">
-                  Page có tên dạng "X with Brand" là ad đăng chung hoặc affiliate/influencer nhắc tới brand.
-                  Mỗi Page này thường chỉ có 1-2 ad, nhưng gộp lại mới thấy brand nào đang được đẩy qua
-                  affiliate mạnh nhất — đây chính là nhóm bị ngưỡng tối thiểu ad cũ loại mất.
+                  Page dạng “X with Brand” là ad đăng chung/affiliate — mỗi Page thường chỉ 1-2 ad, nhưng gộp lại mới thấy brand nào đang được đẩy qua affiliate mạnh nhất.
                 </p>
                 <div className="table-wrap">
                   <table>
@@ -940,17 +878,9 @@ export default function BrandsDashboard() {
             )}
 
             <div className="panel">
-              <h3>Tín hiệu ngoài Meta — Google, Mercado Libre, TikTok</h3>
+              <h3>Tín hiệu ngoài Meta — TikTok + Google Trends</h3>
               <p className="panel-sub">
-                3 nguồn này có đơn vị và độ tin cậy RIÊNG, không cộng chung với số Meta ở trên.
-                Dữ liệu do job fetch-signals kéo 1 lần/ngày (GitHub Actions, 08:00 giờ Mexico),
-                không phải realtime. QUAN TRỌNG: 3 nguồn này hiện CHỈ cover 11 brand gốc (10 đối thủ
-                + Seyoul), chưa mở rộng lên checklist 30 — nên khi đang lọc 1 brand mới (VD CeraVe,
-                Natura) thì 3 bảng dưới trống là đúng, không phải do workflow chưa chạy; bỏ lọc
-                brand để xem đủ 11 brand gốc. Mercado hiện vẫn trống vì lần chạy signals gần nhất
-                (26/10) dùng code cũ trước khi sửa captcha — lần chạy tiếp theo (21:00 tối nay giờ
-                Việt Nam, hoặc bấm Run workflow tay) mới ghi trạng thái captcha mới, và kể cả vậy
-                thì Mercado vẫn có thể không có số vì tường captcha là rào thật.
+                2 nguồn này có đơn vị riêng, không cộng chung với số Meta ở trên. Dữ liệu do job fetch-signals kéo 1 lần/ngày (GitHub Actions, 08:00 giờ Mexico), không phải realtime. Cả 2 nguồn hiện chỉ cover 11 brand gốc (10 đối thủ + Seyoul), chưa mở rộng lên checklist 30 — khi lọc 1 brand mới thì 2 bảng dưới trống là đúng, bỏ lọc brand để xem đủ 11 brand gốc.
               </p>
               {selectedBrand &&
                 tiktokSignals.length > 0 &&
@@ -958,17 +888,14 @@ export default function BrandsDashboard() {
                 ![...tiktokSignals, ...trendsSignals].some((r) => signalMatchesFilter(r.brand)) && (
                   <p className="panel-sub" style={{ color: "#8e6b00" }}>
                     Đang lọc brand "{selectedBrand}" — brand này chưa nằm trong danh sách tín hiệu
-                    11 brand gốc, nên TikTok / Mercado / Trends dưới đây trống là đúng. Bỏ lọc brand
+                    11 brand gốc, nên TikTok / Google Trends dưới đây trống là đúng. Bỏ lọc brand
                     để xem tín hiệu của 11 brand gốc.
                   </p>
                 )}
 
               <h4 style={{ margin: "16px 0 6px", fontSize: 13 }}>TikTok — lượt xem hashtag tích lũy</h4>
               <p className="panel-sub">
-                Nguồn: TikWM challenge/info, không cần key, đã kiểm chứng thật ngày 26/10/2026.
-                Đây là lượt xem hashtag CỘNG DỒN từ trước tới nay, không phải lượt xem trong 1 ngày —
-                muốn thấy tăng trưởng thì so snapshot hôm nay với hôm trước. VT dùng hashtag
-                "vtcosmetics", Round Lab dùng "roundlabskincare" (xem ghi chú trong config/signals.js).
+                Lượt xem hashtag CỘNG DỒN từ trước tới nay, không phải lượt xem trong 1 ngày — muốn thấy tăng trưởng thì so snapshot hôm nay với hôm trước. VT dùng hashtag “vtcosmetics”, Round Lab dùng “roundlabskincare”.
               </p>
               {tiktokSorted.length === 0 ? (
                 <p className="chart-empty">
@@ -1005,81 +932,9 @@ export default function BrandsDashboard() {
                 </div>
               )}
 
-              <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Mercado Libre Mexico — listing và số đã bán</h4>
-              <p className="panel-sub">
-                Nguồn: Mercado Libre Mexico (site MLM). Số đã bán là sold_quantity tích lũy của từng
-                listing, không phải doanh thu và không phải tổng bán của cả brand (1 brand có nhiều
-                listing trùng sản phẩm). TÌNH TRẠNG THẬT ngày 26/10/2026: API Mercado chặn IP máy chủ
-                (403), và trang web Mercado chặn bot bằng tường captcha reCAPTCHA (kiểm chứng thật
-                bằng trình duyệt live: mở listado.mercadolibre.com.mx/medicube là bị chuyển sang
-                trang "Seguridad — Mercado Libre", phải tích "No soy un robot" mới thấy 1.790 kết
-                quả) — job tự động KHÔNG tự giải captcha được, nên bảng này sẽ trống và trạng thái
-                ghi rõ là captcha, không bịa số. Xem trực tiếp tại listado.mercadolibre.com.mx và
-                gõ tên brand vào ô tìm kiếm để xem giá/listing trong lúc chờ đường lấy số hợp lệ khác.
-              </p>
-              {mercadoBlocked.length > 0 && (
-                <p className="panel-sub" style={{ color: "#c0392b" }}>
-                  Mercado đang bị chặn/lỗi ở các brand:{" "}
-                  {mercadoBlocked.map((r) => `${r.brand} (${r.status})`).join(", ")}. Các brand còn lại
-                  (nếu có số) vẫn hiện bình thường.
-                </p>
-              )}
-              {mercadoSummary.length === 0 ? (
-                <p className="chart-empty">
-                  {selectedBrand && mercadoSignals.length > 0
-                    ? "Brand đang lọc chưa có trong danh sách tín hiệu 11 brand (Mercado chỉ theo dõi 10 đối thủ + Seyoul)."
-                    : "Chưa có dữ liệu Mercado — chạy workflow fetch-signals lần đầu. Trong lúc chờ, xem trực tiếp tại listado.mercadolibre.com.mx và gõ tên brand vào ô tìm kiếm."}
-                </p>
-              ) : (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Thương hiệu</th>
-                        <th>Số listing</th>
-                        <th>Tổng đã bán (listing có số)</th>
-                        <th>Khoảng giá (MX$)</th>
-                        <th>Listing bán chạy nhất</th>
-                        <th>Cập nhật</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mercadoSummary.map((r) => (
-                        <tr key={r.brand}>
-                          <td>
-                            <strong>{r.brand}</strong>
-                          </td>
-                          <td>{r.count}</td>
-                          <td>
-                            {fmtNum(r.totalSold)} <span className="muted small">({r.soldKnown}/{r.count} listing có số)</span>
-                          </td>
-                          <td>
-                            {r.minPrice == null ? "—" : `${fmtNum(r.minPrice)} - ${fmtNum(r.maxPrice)}`}
-                          </td>
-                          <td>
-                            {r.top ? (
-                              <a href={r.top.permalink} target="_blank" rel="noreferrer">
-                                {r.top.title ? r.top.title.slice(0, 60) : "Xem"} ({fmtNum(r.top.sold_quantity)} đã bán)
-                              </a>
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-                          <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
               <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Google Trends Mexico — chỉ số quan tâm tương đối, 90 ngày</h4>
               <p className="panel-sub">
-                Chỉ số 0-100 được chuẩn hóa RIÊNG cho từng brand (100 là tuần/ngày cao nhất của chính
-                brand đó trong 90 ngày), không phải số lượt tìm kiếm tuyệt đối, và không so sánh trực
-                tiếp chỉ số trung bình giữa các brand với nhau. Đọc đúng cách: xem chỉ số gần nhất so
-                với trung bình của chính brand đó (đang lên hay đang xuống), và xem đỉnh 100 rơi vào
-                ngày nào trong chuỗi điểm của brand đó.
+                Chỉ số 0-100 chuẩn hóa RIÊNG cho từng brand (100 là ngày cao nhất của chính brand đó trong 90 ngày), không phải lượt tìm kiếm tuyệt đối — không so trung bình giữa các brand với nhau. Đọc đúng cách: so chỉ số gần nhất với trung bình của chính brand đó (đang lên hay xuống).
               </p>
               {trendsSorted.length === 0 ? (
                 <p className="chart-empty">
@@ -1122,33 +977,13 @@ export default function BrandsDashboard() {
             <div className="panel">
               <h3>Đối thủ mở rộng — Website, Creative, Social</h3>
               <p className="panel-sub">
-                3 panel dưới đây là dữ liệu MỚI, tách riêng khỏi số Meta và tín hiệu Google /
-                Mercado / TikTok ở trên. Dữ liệu do job fetch-competitors kéo 1 lần/ngày (GitHub
-                Actions, 09:00 giờ Mexico), không phải realtime. Chưa có dữ liệu nghĩa là job chưa
-                chạy lần nào — vào GitHub repo, tab Actions, workflow "Fetch đối thủ mở rộng",
-                bấm Run workflow để kéo lần đầu.
+                Dữ liệu do job fetch-competitors kéo 1 lần/ngày (GitHub Actions, 09:00 giờ Mexico), không phải realtime. Chưa có dữ liệu nghĩa là job chưa chạy lần nào — vào tab Actions, workflow “Fetch đối thủ mở rộng”, bấm Run workflow để kéo lần đầu.
                 {selectedBrand && " Đang lọc theo brand đang chọn ở đầu trang."}
               </p>
 
               <h4 style={{ margin: "16px 0 6px", fontSize: 13 }}>Website chính — giá + offer</h4>
               <p className="panel-sub">
-                <strong>Đọc panel này để làm gì:</strong> xem đối thủ ĐANG BÁN với offer nào ngay
-                hôm nay để so với offer của Seyoul — ví dụ Round Lab đang "20% off toàn shop cuối
-                tuần + miễn phí vận chuyển từ $25", SKIN1004 đang "giảm tới 50% + tặng merch" (đợt
-                xả hàng, không phải giá thường xuyên), Beauty of Joseon "miễn phí vận chuyển từ $70
-                + tích điểm đổi quà". Nếu đối thủ đang giảm sâu mà Seyoul giữ nguyên giá thì đó là
-                lý do khách so sánh và chần chừ — còn nếu đối thủ không có khuyến mãi rõ ràng thì
-                Seyoul không cần đua giảm giá, chỉ cần nhấn góc bán khác biệt.
-              </p>
-              <p className="panel-sub">
-                Job mở website chính thức của từng brand bằng trình duyệt thật, trích nguyên văn
-                các dòng khuyến mãi tìm thấy và tối đa 20 sản phẩm đầu tiên parse được giá. Giá
-                thấp - cao chỉ tính trên các sản phẩm parse được, không phải toàn shop. <strong>Giới
-                hạn cần biết:</strong> job chỉ đọc TRANG CHỦ — brand nào để khuyến mãi ở trang
-                shop / trang khuyến mãi riêng mà trang chủ không ghi thì sẽ hiện "Không tìm thấy
-                dòng khuyến mãi rõ ràng", không phải là brand đó không có khuyến mãi. Trang nào
-                không mở được thì cột Trạng thái ghi rõ lý do ngắn gọn (lỗi SSL, kết nối bị đóng,
-                bị chặn), không hiện log kỹ thuật dài trong cột Promo nữa.
+                Xem đối thủ đang bán với offer nào hôm nay để so với offer của Seyoul. Job chỉ đọc TRANG CHỦ — khuyến mãi để ở trang shop riêng sẽ không thấy ở đây; giá thấp - cao chỉ tính trên sản phẩm parse được, không phải toàn shop.
               </p>
               {websiteFiltered.length === 0 ? (
                 <p className="chart-empty">Chưa có dữ liệu website — chạy workflow fetch-competitors lần đầu.</p>
@@ -1207,12 +1042,7 @@ export default function BrandsDashboard() {
 
               <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Creative Meta — góc bán + offer (phân loại rule-based)</h4>
               <p className="panel-sub">
-                Phân loại bằng từ khóa cố định trên nội dung ad đã có trong DB (không gọi AI cho
-                mọi ad, nên chạy được ngay, không tốn tiền). Một ad có thể thuộc nhiều góc và nhiều
-                offer cùng lúc, nên tổng số ad theo góc sẽ lớn hơn tổng ad thật — đừng cộng các
-                dòng lại. AI tóm tắt (Pollinations miễn phí, DeepSeek đang hết số dư nên không dùng)
-                chỉ làm cho tối đa 10 ad bền nhất đang chạy, nếu AI lỗi thì phần đó để trống nhưng
-                số liệu rule vẫn đầy đủ.
+                Phân loại bằng từ khóa cố định trên nội dung ad trong DB (không gọi AI cho mọi ad). Một ad có thể thuộc nhiều góc và nhiều offer cùng lúc nên đừng cộng các dòng lại. AI chỉ tóm tắt tối đa 10 ad bền nhất đang chạy; nếu AI lỗi thì phần đó để trống nhưng số liệu rule vẫn đầy đủ.
                 {selectedBrand && " Bảng này đã lọc theo brand đang chọn."}
               </p>
               {creativeData.angles.length === 0 && creativeData.offers.length === 0 ? (
@@ -1286,18 +1116,9 @@ export default function BrandsDashboard() {
                 </>
               )}
 
-              <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Social — YouTube + Facebook + Instagram</h4>
+              <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Social — YouTube + Facebook</h4>
               <p className="panel-sub">
-                YouTube: có key API (GitHub secret YOUTUBE_API_KEY, anh tự tạo trên Google Cloud)
-                thì dùng API chính thức, không có key thì tìm kênh bằng trang kết quả tìm kiếm
-                YouTube qua trình duyệt thật — nếu YouTube chặn bot thì trạng thái ghi blocked.
-                Facebook: lấy Page có nhiều ad nhất của brand từ chính bảng ads, không đoán slug.
-                Instagram: chưa cấu hình handle chính thức cho brand nào nên cột Instagram hiện
-                "—" là đúng, không phải lỗi — anh gửi handle IG chính thức là thêm vào config là
-                chạy được (trước đây cột này ghi 11 dòng "Trạng thái: not_configured" trông như lỗi
-                nên đã đổi thành "—").
-                Số followers/subscribers ở đây là số công khai tại thời điểm job chạy, không phải
-                số realtime.
+                YouTube: kênh tìm bằng trang kết quả tìm kiếm YouTube (chưa có key API chính thức). Facebook: Page có nhiều ad nhất của brand từ chính bảng ads. Số followers/subscribers là số công khai tại thời điểm job chạy, không phải realtime.
               </p>
               {socialByBrand.length === 0 ? (
                 <p className="chart-empty">Chưa có dữ liệu social — chạy workflow fetch-competitors lần đầu (nguồn social).</p>
@@ -1309,7 +1130,6 @@ export default function BrandsDashboard() {
                         <th>Thương hiệu</th>
                         <th>YouTube</th>
                         <th>Facebook</th>
-                        <th>Instagram</th>
                         <th>Cập nhật</th>
                       </tr>
                     </thead>
@@ -1354,15 +1174,6 @@ export default function BrandsDashboard() {
                             )}
                           </td>
                           <td>
-                            {r.instagram
-                              ? r.instagram.status === "success"
-                                ? `${r.instagram.channel_name || "—"} — ${fmtNum(r.instagram.followers)} followers`
-                                : r.instagram.status === "not_configured"
-                                  ? "—"
-                                  : `Trạng thái: ${r.instagram.status}`
-                              : "—"}
-                          </td>
-                          <td>
                             {r.youtube?.fetched_at ? String(r.youtube.fetched_at).slice(0, 10) : "—"}
                           </td>
                         </tr>
@@ -1391,10 +1202,7 @@ export default function BrandsDashboard() {
                 </div>
               </div>
               <p className="panel-sub">
-                Bảng này CHỈ liệt kê 30 brand trong checklist (mỗi brand 1 dòng, đã gộp Page) —
-                không phải toàn bộ Page đã phát hiện. Ngành hàng gắn cứng theo cấu hình từ khóa/thương
-                hiệu (server/src/config/keywords.js), không suy đoán bằng cách so chuỗi tên. Danh sách
-                đầy đủ, không lọc số ad tối thiểu — affiliate 1-2 ad vẫn hiện trong số tổng của brand.
+                Chỉ liệt kê 30 brand trong checklist (mỗi brand 1 dòng, đã gộp Page) — affiliate 1-2 ad vẫn tính trong số tổng của brand.
               </p>
               <div className="table-wrap">
                 <table>
