@@ -40,9 +40,6 @@ export default function Home() {
   // khóa checklist không gọi API khi chưa có danh sách Page.
   const [allBrandStats, setAllBrandStats] = useState([]);
   const [statsLoaded, setStatsLoaded] = useState(false);
-  // Khóa tab Quảng cáo về checklist 30 brand (Đăng yêu cầu 26/10/2026) — mặc định BẬT: danh
-  // sách thường chỉ hiện ad của Page thuộc checklist, bấm "Tất cả ad" mới xem toàn bộ.
-  const [checklistOnly, setChecklistOnly] = useState(true);
 
   const [selectedKeywords, setSelectedKeywords] = useState(new Set());
   const [selectedBrands, setSelectedBrands] = useState(new Set());
@@ -185,7 +182,7 @@ export default function Home() {
       }
       // Chế độ khóa checklist chưa có danh sách Page thì chưa gọi API — fetchStats xong sẽ
       // đổi statsLoaded/checklistPages, fetchAds đổi theo và effect dưới tự gọi lại.
-      if (!brandSearch && checklistOnly && !statsLoaded) return;
+      if (!brandSearch && !statsLoaded) return;
       const isFirstPage = offset === 0;
       isFirstPage ? setLoading(true) : setLoadingMore(true);
       setError(null);
@@ -196,11 +193,12 @@ export default function Home() {
           // Không gửi category khi tìm brand: ad cũ có category trống (VD Medicube quét tay
           // 16/09, category None) vẫn phải hiện, và ad affiliate cũng có thể không gắn category
           // mỹ phẩm. Vẫn giữ lọc quốc gia + trạng thái + loại nội dung ở dưới.
-        } else if (checklistOnly) {
-          // Khóa tab về checklist 30 brand: chỉ hiện ad của Page thuộc checklist, lọc bằng
-          // page_names CHÍNH XÁC (khác brandSearch khớp chuỗi rộng) để phân trang vẫn đúng
-          // phía server. Không gửi category — giống đường brandSearch — để ad chưa gắn
-          // category (VD Medicube) vẫn hiện. Từ khoá ngành + tìm nội dung vẫn AND thêm được.
+        } else {
+          // Tab này KHÓA VĨNH VIỄN về checklist 30 brand (Đăng yêu cầu 26/10/2026, bỏ nút
+          // Phạm vi): chỉ hiện ad của Page thuộc checklist, lọc bằng page_names CHÍNH XÁC
+          // (khác brandSearch khớp chuỗi rộng) để phân trang vẫn đúng phía server. Không gửi
+          // category — giống đường brandSearch — để ad chưa gắn category (VD Medicube) vẫn
+          // hiện. Từ khoá ngành + tìm nội dung vẫn AND thêm được.
           let names = checklistPages.map((p) => p.page_name);
           if (selectedBrands.size) names = names.filter((n) => selectedBrands.has(n));
           if (!names.length) {
@@ -212,11 +210,6 @@ export default function Home() {
           params.set("page_names", names.join(","));
           if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
           if (debouncedContentSearch) params.set("q", debouncedContentSearch);
-        } else {
-          if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
-          if (selectedBrands.size) params.set("page_names", Array.from(selectedBrands).join(","));
-          if (debouncedContentSearch) params.set("q", debouncedContentSearch);
-          params.set("category", "Mỹ phẩm & Làm đẹp");
         }
         params.set("country", countryFilter || "MX,US");
         if (mediaTypeFilter) params.set("media_type", mediaTypeFilter);
@@ -239,7 +232,7 @@ export default function Home() {
         setLoadingMore(false);
       }
     },
-    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter, brandSearch, checklistOnly, checklistPages, statsLoaded]
+    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter, brandSearch, checklistPages, statsLoaded]
   );
 
   useEffect(() => {
@@ -360,23 +353,15 @@ export default function Home() {
 
   const visibleBrands = useMemo(() => {
     const text = brandFilterText.trim().toLowerCase();
-    // Khi khóa về checklist thì dropdown Thương hiệu cũng chỉ liệt kê Page thuộc checklist
-    // (để không chọn lọt Page ngoài checklist rồi phá khóa); khi mở khóa thì giữ logic cũ:
-    // chỉ liệt kê Page thuần Mỹ phẩm & Làm đẹp: loại Page có category lẫn Thời trang
-    // (VD SHEIN Mexico có cả 2 category trong DB, nên dù backend đã lọc ad theo category thì
-    // Page đó vẫn lọt vào danh sách nếu chỉ lọc theo categories.includes). Page không có
-    // categories (dữ liệu cũ hiếm) thì giữ lại để không mất brand thật.
+    // Tab khóa vĩnh viễn về checklist nên dropdown Thương hiệu chỉ liệt kê Page thuộc
+    // checklist — Page ngoài checklist không chọn được.
     // Không áp ngưỡng số ad ở sidebar (Đăng đính chính 26/10/2026): affiliate chỉ có 1-2 ad
-    // vẫn phải hiện, vì mục tiêu là khai thác tối đa brand đối thủ. Chỉ lọc thuần mỹ phẩm như cũ.
+    // vẫn phải hiện, vì mục tiêu là khai thác tối đa brand đối thủ.
     // Muốn tìm nhanh 1 brand cụ thể thì dùng ô "Tìm thương hiệu" ở dưới thanh lọc.
-    let list = checklistOnly
-      ? checklistPages
-      : brandStats.filter(
-          (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
-        );
+    let list = checklistPages;
     if (text) list = list.filter((b) => b.page_name.toLowerCase().includes(text));
     return showAllBrands || text ? list : list.slice(0, 30);
-  }, [brandStats, brandFilterText, showAllBrands, checklistOnly, checklistPages]);
+  }, [brandFilterText, showAllBrands, checklistPages]);
 
   return (
     <Layout
@@ -462,22 +447,6 @@ export default function Home() {
             </button>
             <button className={sortMode === "newest" ? "active" : ""} onClick={() => setSortMode("newest")}>
               Mới phát hiện
-            </button>
-          </div>
-
-          <div className="pill-toggle">
-            <span className="pill-group-label">Phạm vi</span>
-            <button
-              className={checklistOnly ? "active" : ""}
-              onClick={() => {
-                setChecklistOnly(true);
-                setSelectedBrands(new Set());
-              }}
-            >
-              Chỉ checklist
-            </button>
-            <button className={!checklistOnly ? "active" : ""} onClick={() => setChecklistOnly(false)}>
-              Tất cả ad
             </button>
           </div>
 
@@ -601,10 +570,10 @@ export default function Home() {
           </p>
         )}
 
-        {checklistOnly && !brandSearch && (
+        {!brandSearch && (
           <p className="hint-text" style={{ marginTop: "8px" }}>
-            Đang khóa tab này về 30 brand trong checklist — chỉ hiện ad của Page thuộc checklist
-            (kể cả ad chưa gắn category như Medicube). Bấm “Tất cả ad” ở thanh lọc để xem toàn bộ.
+            Tab này chỉ hiện ad của Page thuộc 30 brand trong checklist (kể cả ad chưa gắn
+            category như Medicube).
           </p>
         )}
 
@@ -734,12 +703,24 @@ export default function Home() {
                   const fbUrl = facebookUrlFor(ad.page_id);
                   return (
                     <article className="card" key={ad.ad_id}>
-                      <div className="card-banner" style={ad.thumbnail_url ? undefined : { background: avatarGradient(ad.page_name) }}>
-                        {ad.thumbnail_url ? (
+                      <div className="card-banner" style={{ background: avatarGradient(ad.page_name) }}>
+                        {/* Chữ viết tắt LUÔN nằm dưới ảnh: ảnh phủ kín banner (xem .card-banner-img:
+                        position absolute), ảnh lỗi thì onError ẩn ảnh đi và hiện đúng khung
+                        nền + chữ viết tắt như trường hợp không có thumbnail — không còn icon
+                        ảnh vỡ. Lỗi này gặp nhiều vì URL ảnh CDN của Meta có chữ ký hết hạn
+                        (kiểm chứng 26/10/2026: 11/12 thumbnail ad checklist trả 403). */}
+                        <span className="card-initials">{initials(ad.page_name)}</span>
+                        {ad.thumbnail_url && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img className="card-banner-img" src={ad.thumbnail_url} alt="" loading="lazy" />
-                        ) : (
-                          <span className="card-initials">{initials(ad.page_name)}</span>
+                          <img
+                            className="card-banner-img"
+                            src={ad.thumbnail_url}
+                            alt=""
+                            loading="lazy"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
                         )}
                         <span className={`status-pill ${ad.is_active ? "is-live" : "is-off"}`}>
                           {ad.is_active ? "● Đang chạy" : "Đã dừng"}
@@ -1179,6 +1160,9 @@ export default function Home() {
           overflow: hidden;
         }
         .card-banner-img {
+          position: absolute;
+          top: 0;
+          left: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
