@@ -1,3 +1,13 @@
+// THU HẸP PHẠM VI (26/10/2026 — theo yêu cầu của Đăng):
+//   - Thị trường: CHỈ còn Mexico (MX) và Mỹ (US). Đã gỡ KR/TH/MY khỏi MARKETS.
+//   - Ngành hàng: CHỈ còn "Mỹ phẩm & Làm đẹp" (bao gồm cả từ khóa chăm sóc da như
+//     "cuidado de la piel", "skincare", "sérum facial", "vitamin c serum"...).
+//     Đã gỡ toàn bộ mục category "Thời trang" khỏi MX và US.
+//   - Theo tiền lệ gỡ "Đồ gia dụng" (16/09/2026): gỡ khỏi danh sách chỉ NGỪNG QUÉT MỚI,
+//     KHÔNG xóa dữ liệu ad cũ trong DB — ad KR/TH/MY và Thời trang đã quét trước đó vẫn
+//     còn trong DB và vẫn xem được qua tìm kiếm/thương hiệu, chỉ không còn trong dropdown
+//     Thị trường/Ngành hàng và không được quét lại nữa. Muốn xóa hẳn dữ liệu cũ phải chạy
+//     DELETE riêng trên DB, không làm bằng sửa code này.
 // Danh sách từ khóa/ngành/thương hiệu cần theo dõi, CHIA THEO TỪNG THỊ TRƯỜNG (quốc gia).
 // CHỈNH SỬA file này theo nhu cầu thực tế — mỗi item có 3 field:
 //   - keyword: từ khóa/tên thương hiệu dùng để search trên Meta Ad Library
@@ -92,22 +102,6 @@ export const MARKETS = {
       { keyword: "Avon", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "M.A.C Cosmetics", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
 
-      // --- Thời trang — ngành hàng ---
-      { keyword: "moda mujer", type: "industry", category: "Thời trang" },
-      { keyword: "ropa mujer", type: "industry", category: "Thời trang" },
-      { keyword: "zapatos mujer", type: "industry", category: "Thời trang" },
-      { keyword: "tenis mujer", type: "industry", category: "Thời trang" }, // thêm 11/09/2026 — góc tìm giày thể thao/sneaker, khác tập kết quả với "zapatos mujer" (giày nói chung)
-
-      // --- Thời trang — thương hiệu Mexico DTC (nguồn: abito.com.mx) ---
-      { keyword: "Abito", type: "brand", category: "Thời trang" },
-      { keyword: "Collectiva Concepción", type: "brand", category: "Thời trang" },
-      { keyword: "Caruso Yucatán", type: "brand", category: "Thời trang" }, // thêm hậu tố "Yucatán" để tránh trùng brand/tên riêng "Caruso" khác không liên quan
-      { keyword: "Costavana", type: "brand", category: "Thời trang" },
-      { keyword: "Someone Somewhere", type: "brand", category: "Thời trang" },
-      // Thêm 11/09/2026 — nguồn: revistacodigo.com ("10 tiendas de moda independientes en México")
-      { keyword: "Mal de Amores joyería", type: "brand", category: "Thời trang" }, // thêm "joyería" vì "Mal de Amores" trùng tên nhiều bài hát/phim, cần thu hẹp
-      { keyword: "Sandra Weil", type: "brand", category: "Thời trang" },
-
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],
   },
@@ -142,126 +136,10 @@ export const MARKETS = {
       { keyword: "Rhode Skin", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "Fenty Beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
 
-      // --- Thời trang — ngành hàng ---
-      { keyword: "women's fashion", type: "industry", category: "Thời trang" },
-      { keyword: "men's clothing", type: "industry", category: "Thời trang" },
-
-      // --- Thời trang — thương hiệu DTC (nguồn: ringly.io) ---
-      { keyword: "Everlane", type: "brand", category: "Thời trang" },
-      { keyword: "Quince", type: "brand", category: "Thời trang" },
-      { keyword: "Allbirds", type: "brand", category: "Thời trang" },
-      { keyword: "Rothy's", type: "brand", category: "Thời trang" },
-      { keyword: "Reformation", type: "brand", category: "Thời trang" },
-      { keyword: "Mejuri", type: "brand", category: "Thời trang" },
-      { keyword: "Vuori Clothing", type: "brand", category: "Thời trang" },
-      { keyword: "Cuyana", type: "brand", category: "Thời trang" }, // thêm 11/09/2026, nguồn: glossy.co
-      { keyword: "Faherty Brand", type: "brand", category: "Thời trang" }, // thêm "Brand" tránh trùng tên riêng "Faherty"; nguồn: glossy.co
-
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],
   },
 
-  KR: {
-    label: "Hàn Quốc",
-    metaCountryCode: "KR",
-    items: [
-      // --- Mỹ phẩm & Làm đẹp — ngành hàng (tiếng Hàn, vì quảng cáo thật đa số viết tiếng Hàn) ---
-      { keyword: "스킨케어", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "skincare"
-      { keyword: "화장품", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "mỹ phẩm/cosmetics"
-      { keyword: "메이크업", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "makeup"
-
-      // --- Mỹ phẩm & Làm đẹp — thương hiệu K-beauty phổ biến (benchmark — tìm kiếm không ra brand
-      // DTC/indie nào có nguồn báo chí đủ rõ ràng, nên dùng nhóm thương hiệu lớn/phổ biến đã xác
-      // minh thật, nguồn: Wikipedia) ---
-      { keyword: "Innisfree", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Nature Republic", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Skin Food", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Mamonde", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-
-      // --- Thời trang — ngành hàng (tiếng Hàn) ---
-      { keyword: "여성 패션", type: "industry", category: "Thời trang" }, // "women's fashion"
-      { keyword: "남성 의류", type: "industry", category: "Thời trang" }, // "men's clothing"
-
-      // --- Thời trang — thương hiệu DTC độc lập (nguồn: russh.com, "31 of the best Korean fashion
-      // brands to shop in 2026" — bài viết nhấn mạnh đây là các label độc lập/DTC quy mô vừa) ---
-      { keyword: "Ader Error", type: "brand", category: "Thời trang" },
-      { keyword: "We11done", type: "brand", category: "Thời trang" },
-      { keyword: "MatinKim", type: "brand", category: "Thời trang" },
-      { keyword: "Dunst clothing", type: "brand", category: "Thời trang" }, // thêm "clothing" tránh trùng tên riêng "Dunst" (VD diễn viên Kirsten Dunst)
-      { keyword: "Marge Sherwood", type: "brand", category: "Thời trang" },
-      { keyword: "Andersson Bell", type: "brand", category: "Thời trang" },
-
-      // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
-    ],
-  },
-
-  TH: {
-    label: "Thái Lan",
-    metaCountryCode: "TH",
-    items: [
-      // --- Mỹ phẩm & Làm đẹp — ngành hàng (tiếng Thái) ---
-      { keyword: "สกินแคร์", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "skincare"
-      { keyword: "เครื่องสำอาง", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "mỹ phẩm/cosmetics"
-      { keyword: "แต่งหน้า", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "trang điểm/makeup"
-
-      // --- Mỹ phẩm & Làm đẹp — thương hiệu DTC độc lập (nguồn: tatlerasia.com, "15 Thai beauty
-      // brands to know in 2026") ---
-      { keyword: "Baby Bright", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Gravich", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Fyne beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" }, // thêm "beauty" tránh trùng tên riêng "Fyne" (VD địa danh/rượu whisky Loch Fyne)
-      { keyword: "Dr Pong", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Rati skincare", type: "brand", category: "Mỹ phẩm & Làm đẹp" }, // thêm "skincare" tránh trùng tên riêng "Rati" (tên nữ thần trong thần thoại Hindu)
-      { keyword: "Jux beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" }, // thêm "beauty" tránh trùng từ viết tắt "Jux" ở ngành khác
-
-      // --- Thời trang — ngành hàng (tiếng Thái) ---
-      { keyword: "แฟชั่นผู้หญิง", type: "industry", category: "Thời trang" }, // "women's fashion"
-      { keyword: "เสื้อผ้าผู้ชาย", type: "industry", category: "Thời trang" }, // "men's clothing"
-
-      // --- Thời trang — thương hiệu DTC (nguồn: tatlerasia.com, "2026 guide to Southeast Asian
-      // fashion brands") ---
-      { keyword: "Gentlewoman Bangkok", type: "brand", category: "Thời trang" }, // thêm "Bangkok" tránh trùng nghĩa gốc "gentlewoman"
-      { keyword: "Disaya", type: "brand", category: "Thời trang" },
-      { keyword: "Kloset fashion", type: "brand", category: "Thời trang" }, // thêm "fashion" tránh trùng từ thông dụng "kloset"/"closet"
-      { keyword: "Mitr clothing", type: "brand", category: "Thời trang" }, // thêm "clothing" tránh trùng từ ngắn dễ nhầm
-
-      // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
-    ],
-  },
-
-  MY: {
-    label: "Malaysia",
-    metaCountryCode: "MY",
-    items: [
-      // --- Mỹ phẩm & Làm đẹp — ngành hàng (tiếng Mã Lai — quảng cáo tại Malaysia thường pha trộn
-      // Mã Lai/Anh, riêng "kosmetik"/"mekap" là từ mượn quen dùng trong tiếng Mã Lai đời thường) ---
-      { keyword: "penjagaan kulit", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "chăm sóc da/skincare"
-      { keyword: "kosmetik", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "mỹ phẩm/cosmetics"
-      { keyword: "mekap", type: "industry", category: "Mỹ phẩm & Làm đẹp" }, // "trang điểm/makeup"
-
-      // --- Mỹ phẩm & Làm đẹp — thương hiệu DTC độc lập (nguồn: buro247.my, "18 Malaysian Skincare
-      // Brands Every Beauty Lover Should Know") ---
-      { keyword: "Lumi Beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Handmade Heroes", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Chandra Skin", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "The Mineraw", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Cuura", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-      { keyword: "Meizlab", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
-
-      // --- Thời trang — ngành hàng (tiếng Mã Lai) ---
-      { keyword: "fesyen wanita", type: "industry", category: "Thời trang" }, // "women's fashion"
-      { keyword: "pakaian lelaki", type: "industry", category: "Thời trang" }, // "men's clothing"
-
-      // --- Thời trang — thương hiệu Malaysia (nguồn: growyourclothingbrand.com, "12 Malaysian
-      // Clothing Brands Worth Knowing (2026)") ---
-      { keyword: "Naelofar", type: "brand", category: "Thời trang" },
-      { keyword: "Poplook", type: "brand", category: "Thời trang" },
-      { keyword: "Pestle & Mortar Clothing", type: "brand", category: "Thời trang" }, // thêm "Clothing" — "Pestle & Mortar" trùng tên dụng cụ bếp (cối chày), rất dễ lẫn với nội dung nấu ăn
-      { keyword: "Christy Ng", type: "brand", category: "Thời trang" },
-      { keyword: "TNTCO", type: "brand", category: "Thời trang" },
-
-      // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
-    ],
-  },
 };
 
 // GHI CHÚ CHO LẦN CẬP NHẬT SAU:

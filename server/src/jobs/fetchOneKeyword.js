@@ -20,8 +20,10 @@ import { launchLibraryBrowser, closeLibraryBrowser } from "../lib/adLibraryScrap
 import { processKeyword } from "./scanKeyword.js";
 import { guessCategory } from "../lib/guessCategory.js";
 
-const VALID_COUNTRIES = ["MX", "US", "KR", "TH", "MY"];
-const VALID_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang"];
+// Thu hẹp 26/10/2026: chỉ MX/US và chỉ "Mỹ phẩm & Làm đẹp" — đồng bộ với MARKETS trong
+// server/src/config/keywords.js (đã gỡ KR/TH/MY và toàn bộ category "Thời trang").
+const VALID_COUNTRIES = ["MX", "US"];
+const VALID_CATEGORIES = ["Mỹ phẩm & Làm đẹp"];
 
 async function main() {
   const keyword = (process.env.SCAN_KEYWORD || "").trim();

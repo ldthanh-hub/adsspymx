@@ -22,7 +22,8 @@ const PAGE_SIZE = 60;
 // Link thẳng tới trang chạy workflow "Quét 1 từ khóa theo yêu cầu" trên GitHub — xem README mục
 // cùng tên để có hướng dẫn từng bước. Đổi lại URL này nếu sau này đổi tên/chuyển repo.
 const SCAN_WORKFLOW_URL = "https://github.com/ldthanh-hub/adsspymx/actions/workflows/fetch-oneoff.yml";
-const SCAN_CATEGORIES = ["Mỹ phẩm & Làm đẹp", "Thời trang"];
+// Thu hẹp 26/10/2026: chỉ còn "Mỹ phẩm & Làm đẹp" — đồng bộ với keywords.js (đã gỡ "Thời trang").
+const SCAN_CATEGORIES = ["Mỹ phẩm & Làm đẹp"];
 
 export default function Home() {
   const router = useRouter();

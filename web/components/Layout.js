@@ -8,7 +8,7 @@ export default function Layout({ active, headerRight, children }) {
           <span className="brand-mark">MX</span>
           <div>
             <h1>Ad Spy</h1>
-            <p>Theo dõi quảng cáo mỹ phẩm đối thủ tại Mexico</p>
+            <p>Theo dõi quảng cáo mỹ phẩm đối thủ tại Mexico và Mỹ</p>
           </div>
         </div>
 
