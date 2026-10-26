@@ -194,6 +194,16 @@ app.get("/api/ads", async (req, res, next) => {
 const statsQuerySchema = z.object({
   country: z.string().max(200).optional(),
   category: z.string().max(500).optional(),
+  // window_days: lọc "ad chạy trong N ngày gần nhất" (26/10/2026 — Đăng yêu cầu cho bảng
+  // Dashboard Brand). Ad được tính nếu ĐANG CHẠY (is_active) — chắc chắn chạy trong khoảng
+  // vì khoảng kết thúc ở hiện tại — HOẶC ĐÃ DỪNG nhưng lần cuối tool còn thấy nó trong
+  // khoảng (last_seen_at >= now - N ngày). Dùng last_seen làm proxy vì Meta KHÔNG trả ngày
+  // dừng chính xác: đo 26/10/2026, delivery_stop_date NULL ở 100/100 ad đã dừng mẫu (và
+  // delivery_start_date cũng NULL ở 94/100 ad đã dừng) nên không thể tính khoảng chạy từ
+  // delivery dates cho ad đã dừng. Hệ quả cần nói rõ: ad đã dừng từ lâu nhưng vẫn còn lọt
+  // vào kết quả quét (Meta trả cả ad không còn chạy) thì last_seen vẫn mới và vẫn lọt vào
+  // khoảng — đây là xấp xỉ, không phải ngày dừng thật.
+  window_days: z.coerce.number().int().min(1).max(3650).optional(),
   // brand: chỉ /api/trend dùng để vẽ xu hướng RIÊNG 1 brand (khớp OR giống /api/ads:
   // tên Page chứa brand, nội dung nhắc brand, hoặc từ khóa đúng tên brand). /api/keywords và
   // /api/brands nhận tham số này mà không dùng — giữ schema chung cho đỡ vỡ frontend cũ.
@@ -219,6 +229,10 @@ function statsConditions(parsed, values) {
       values.push(list);
       conditions.push(`category = ANY($${values.length}::text[])`);
     }
+  }
+  if (parsed.data.window_days) {
+    values.push(parsed.data.window_days);
+    conditions.push(`(is_active OR last_seen_at >= now() - $${values.length} * interval '1 day')`);
   }
   return conditions;
 }

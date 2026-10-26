@@ -133,6 +133,7 @@ export default function BrandsDashboard() {
   const [brandTrendLoading, setBrandTrendLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(TABLE_PAGE);
   const [countryFilter, setCountryFilter] = useState("MX"); // mặc định thị trường gốc; "" = gộp MX+US (từ 26/10/2026, không còn gộp KR/TH/MY)
+  const [timeFilter, setTimeFilter] = useState(""); // "" = mọi thời gian; "7"/"30"/"90" = ad chạy trong N ngày gần nhất (26/10/2026 — Đăng yêu cầu)
 
   useEffect(() => {
     if (!API_BASE) {
@@ -153,15 +154,18 @@ export default function BrandsDashboard() {
         const trendMap = new Map();
         for (const c of countries) {
           const suffix = `?country=${encodeURIComponent(c)}&category=${cat}`;
+          // window_days chỉ gửi cho /api/brands + /api/keywords (cùng dùng statsConditions):
+          // biểu đồ xu hướng (/api/trend) giữ nguyên cửa sổ 30 ngày theo ngày phát hiện của nó.
+          const windowParam = timeFilter ? `&window_days=${timeFilter}` : "";
           // Riêng /api/brands KHÔNG lọc category (26/10/2026 — sửa lỗi Medicube biến mất):
           // Page quét qua từ khóa brand thì guessCategory trả null nên categories trống, gọi
           // kèm category mỹ phẩm sẽ nuốt mất cả brand dù DB có đủ ad. Lọc mỹ phẩm/chưa có
           // category chuyển xuống trackedPages (isCosmeticsOrUnknownPage) — bảng từ khóa và
           // biểu đồ xu hướng vẫn lấy đúng category mỹ phẩm như cũ.
-          const brandSuffix = `?country=${encodeURIComponent(c)}`;
+          const brandSuffix = `?country=${encodeURIComponent(c)}${windowParam}`;
           const [brandsRes, kwRes, trendRes] = await Promise.all([
             fetch(`${API_BASE}/api/brands${brandSuffix}`),
-            fetch(`${API_BASE}/api/keywords${suffix}`),
+            fetch(`${API_BASE}/api/keywords${suffix}${windowParam}`),
             fetch(`${API_BASE}/api/trend${suffix}`),
           ]);
           if (!brandsRes.ok || !kwRes.ok || !trendRes.ok) throw new Error("API trả về lỗi khi tải dashboard");
@@ -204,7 +208,7 @@ export default function BrandsDashboard() {
         setLoading(false);
       }
     })();
-  }, [countryFilter]);
+  }, [countryFilter, timeFilter]);
 
   // Kéo tín hiệu ngoài Meta 1 lần khi mở trang (không phụ thuộc countryFilter vì 3 nguồn
   // này đều gắn với Mexico / hashtag toàn cầu, không chia MX/US như Meta).
@@ -271,11 +275,12 @@ export default function BrandsDashboard() {
     })();
   }, [selectedBrand, brandStats]);
 
-  // Đổi brand đang lọc thì quay lại trang đầu của bảng (tránh trường hợp bảng đã lọc chỉ
-  // còn vài dòng mà visibleCount đang ở mức cao, nút Xem thêm hiện sai).
+  // Đổi brand đang lọc HOẶC đổi khoảng thời gian thì quay lại trang đầu của bảng (tránh
+  // trường hợp bảng đã lọc chỉ còn vài dòng mà visibleCount đang ở mức cao, nút Xem thêm
+  // hiện sai).
   useEffect(() => {
     setVisibleCount(TABLE_PAGE);
-  }, [selectedBrand]);
+  }, [selectedBrand, timeFilter]);
 
   // Xu hướng RIÊNG của brand đang chọn: gọi /api/trend?brand=... từng thị trường rồi gộp ngày
   // (giống cách gộp dashboard chính) — brand ở đây khớp OR giống /api/ads nên xu hướng của 1
@@ -687,6 +692,17 @@ export default function BrandsDashboard() {
                       </option>
                     ))}
                 </select>
+                <select
+                  value={timeFilter}
+                  onChange={(e) => setTimeFilter(e.target.value)}
+                  style={{ minWidth: 180 }}
+                  title="Lọc ad chạy trong khoảng thời gian"
+                >
+                  <option value="">Mọi thời gian</option>
+                  <option value="7">7 ngày qua</option>
+                  <option value="30">30 ngày qua</option>
+                  <option value="90">90 ngày qua</option>
+                </select>
                 {selectedBrand && (
                   <span className="muted small" style={{ alignSelf: "center" }}>
                     Đang lọc: <strong>{selectedBrand}</strong> —{" "}
@@ -694,6 +710,13 @@ export default function BrandsDashboard() {
                       ? `${selectedRow.pages.length} Page thuộc brand này, `
                       : `${filteredBrandStats.length} Page thuộc brand này, `}
                     {totals.totalAds} ad.
+                  </span>
+                )}
+                {timeFilter && (
+                  <span className="muted small" style={{ alignSelf: "center" }}>
+                    Đang lọc {timeFilter} ngày qua: tính ad đang chạy, hoặc ad đã dừng nhưng lần
+                    cuối tool còn thấy trong khoảng (Meta không trả ngày dừng chính xác nên đây là
+                    xấp xỉ theo lần thấy cuối, không phải ngày dừng thật).
                   </span>
                 )}
               </div>
@@ -704,6 +727,12 @@ export default function BrandsDashboard() {
                   thêm vào checklist — cron Meta quét từ khóa mới mỗi ngày lúc 20:00 giờ Việt Nam,
                   sau lần quét đầu tiên thì Page của brand đó mới xuất hiện ở đây (không cần deploy
                   lại, dữ liệu tự vào DB là dashboard tự hiện).
+                  {timeFilter && (
+                    <>
+                      {" "}Khi đang lọc {timeFilter} ngày qua, brand không có ad chạy trong khoảng
+                      cũng nằm trong danh sách này — không có nghĩa là brand chưa từng có Page.
+                    </>
+                  )}
                 </p>
               )}
             </div>
