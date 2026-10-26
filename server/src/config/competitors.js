@@ -18,14 +18,21 @@ export const COMPETITOR_BRANDS = [
   { name: "Medicube", websiteUrl: "https://www.medicube.com", websiteFallbackUrl: "https://medicube.us" },
   { name: "Rejuran", websiteUrl: "https://rejuran.co.kr", websiteFallbackUrl: null },
   { name: "Anua", websiteUrl: "https://www.anua.com", websiteFallbackUrl: null },
-  { name: "VT", websiteUrl: "https://www.vtcosmetics.com", websiteFallbackUrl: null },
+  { name: "VT", websiteUrl: "https://www.vtcosmetics.com", websiteFallbackUrl: "https://vtcosmetics.com" },
   { name: "EQQUALBERRY", websiteUrl: "https://eqqualberry.com", websiteFallbackUrl: null },
   { name: "SKIN1004", websiteUrl: "https://www.skin1004.com", websiteFallbackUrl: null },
   { name: "Dr. Althea", websiteUrl: "https://dralthea.com", websiteFallbackUrl: null },
   { name: "Eucerin", websiteUrl: "https://www.eucerin.com.mx", websiteFallbackUrl: null },
   { name: "Round Lab", websiteUrl: "https://roundlab.com", websiteFallbackUrl: null },
   { name: "Beauty of Joseon", websiteUrl: "https://beautyofjoseon.com", websiteFallbackUrl: null },
-  { name: "Seyoul", websiteUrl: "https://seyoul.com", websiteFallbackUrl: null },
+  // Seyoul: websiteUrl = null LÀ CỐ Ý (sửa 26/10/2026). seyoul.com KHÔNG phải website của
+  // Seyoul — mở ra là trang rao bán domain của GoDaddy ("You don't have permission to access
+  // forsale.godaddy.com/forsale/seyoul.com"), job cũ đã lấy nhầm và hiện lỗi đó trong panel.
+  // Ứng viên tìm thấy qua tìm kiếm là seyoulstore.com (giá USD $16.99/$58.99, có phần tiếng Tây
+  // Ban Nha) nhưng chưa xác minh được đó có phải landing page Mexico của Đăng hay chỉ là store
+  // quốc tế — KHÔNG tự gán, chờ Đăng xác nhận URL landing page MX rồi mới điền vào đây.
+  // Khi websiteUrl = null, job ghi status 'not_configured' và panel hiện "Chưa cấu hình website".
+  { name: "Seyoul", websiteUrl: null, websiteFallbackUrl: null },
 ];
 
 // Từ điển phân loại creative (rule-based, chạy trên creative_text đã có trong DB, không cần

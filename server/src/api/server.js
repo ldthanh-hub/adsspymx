@@ -290,7 +290,12 @@ app.get("/api/brands", async (req, res, next) => {
        ${where}
        GROUP BY page_name
        ORDER BY total DESC
-       LIMIT 400`,
+       -- LIMIT tăng từ 400 lên 2000 (sửa 26/10/2026): LIMIT 400 cũ cắt mất đúng các Page đối
+       -- thủ đang theo dõi — Page Medicube/Anua... chỉ có 1-2 ad nên xếp sau 400 Page long-tail
+       -- có nhiều ad hơn, frontend gộp Brand không bao giờ thấy được chúng dù đã có trong DB.
+       -- Với quy mô hiện tại (~1000 Page MX+US mỹ phẩm), 2000 đủ bao hết; nếu DB tăng mạnh thì
+       -- cần phân trang hoặc tham số tracked thay vì tăng LIMIT tiếp.
+       LIMIT 2000`,
       values
     );
     res.json({ data: rows });

@@ -336,6 +336,15 @@ async function main() {
       }
       if (source === "website") {
         for (const brand of brands) {
+          if (!brand.websiteUrl) {
+            // Chưa xác minh website chính thức (VD Seyoul) — ghi rõ, không đoán URL.
+            await client.query(
+              `INSERT INTO website_snapshots (brand, website_url, status, error_message) VALUES ($1, '', 'not_configured', $2)`,
+              [brand.name, "Chưa cấu hình website chính thức trong config/competitors.js — cần xác minh URL rồi mới kéo được."]
+            );
+            console.log(`[competitors:website] ${brand.name}: chưa cấu hình website, bỏ qua.`);
+            continue;
+          }
           try {
             const data = await fetchWebsite(brand);
             await client.query(
@@ -345,11 +354,13 @@ async function main() {
             );
             console.log(`[competitors:website] ${brand.name}: ${data.promo_texts.length} promo, ${data.products.length} sản phẩm, giá ${data.price_min ?? "—"}-${data.price_max ?? "—"}`);
           } catch (err) {
+            // Chỉ lưu lý do chính, bỏ phần "Call log" dài của Playwright để panel không hiện log kỹ thuật.
+            const shortErr = String(err.message).split("Call log:")[0].trim().slice(0, 300);
             await client.query(
               `INSERT INTO website_snapshots (brand, website_url, status, error_message) VALUES ($1, $2, 'blocked', $3)`,
-              [brand.name, brand.websiteUrl, String(err.message).slice(0, 500)]
+              [brand.name, brand.websiteUrl, shortErr]
             );
-            console.error(`[competitors:website] ${brand.name} LỖI: ${String(err.message).slice(0, 150)}`);
+            console.error(`[competitors:website] ${brand.name} LỖI: ${shortErr.slice(0, 150)}`);
           }
           await delay();
         }

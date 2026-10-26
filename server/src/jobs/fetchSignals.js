@@ -75,8 +75,19 @@ export async function fetchMercadoApi(query) {
 }
 
 // Fallback bằng trình duyệt thật: mở trang tìm kiếm Mercado Mexico, đọc tối đa 50 kết quả.
-// Số "đã bán" trên trang web nằm trong chuỗi kiểu "100 vendidos" / "+1k vendidos" — hàm này
-// chỉ parse được dạng số thường, dạng "+1k" thì ghi null (không đoán 1000) để khỏi bịa số.
+// KẾT QUẢ KIỂM CHỨNG THẬT ngày 26/10/2026 (trình duyệt live mở listado.mercadolibre.com.mx/medicube):
+// trang lập tức chuyển sang tường captcha reCAPTCHA "Seguridad — Mercado Libre" ("Por seguridad,
+// completa este paso", nút "No soy un robot" + "Continuar") — job headless trên GitHub Actions
+// KHÔNG tự giải captcha được (và không được build tính năng tự giải captcha), nên lỗi thật của
+// job trước đây không phải "trang đổi class" mà là "đang đứng ở tường captcha, không có thẻ kết
+// quả nào để chờ". Hàm này vì vậy: (1) phát hiện tường captcha và báo rõ 'captcha_blocked'
+// thay vì timeout chung chung, (2) bấm "Aceptar cookies" nếu banner hiện (đây là đồng ý cookie,
+// không phải giải captcha), (3) chờ NHIỀU tên class kết quả thay vì chỉ 1 class cũ.
+// Sau khi captcha được giải tay, trang thật có 1.790 kết quả cho "medicube", nhưng 3 sản phẩm
+// đầu tiên KHÔNG hiện chữ "vendidos" trong văn bản trang (dạng lưới mới) — nên sold_quantity
+// có thể null cho nhiều listing dù listing vẫn lấy được giá, đó là giới hạn thật của nguồn này,
+// không phải lỗi parse. Số "đã bán" trên trang web nằm trong chuỗi kiểu "100 vendidos" / "+1k
+// vendidos" — hàm này chỉ parse được dạng số thường, dạng "+1k" thì ghi null (không đoán 1000).
 function parseSoldText(text) {
   if (!text) return null;
   const m = text.match(/([\d.,]+)\s*vendid/);
@@ -96,18 +107,46 @@ export async function fetchMercadoBrowser(query) {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
-    await page.waitForSelector(".ui-search-result", { timeout: 30000 });
-    const items = await page.$$eval(".ui-search-result", (cards) =>
+    await page.waitForTimeout(3000);
+    // (1) Phát hiện tường captcha TRƯỚC khi chờ kết quả — nếu đang ở tường captcha thì
+    // báo rõ, không để job chờ 30 giây rồi ghi timeout chung chung như trước.
+    const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 2000));
+    if (
+      page.url().includes("/captcha/") ||
+      bodyText.includes("No soy un robot") ||
+      bodyText.includes("Por seguridad, completa este paso")
+    ) {
+      throw new Error(
+        "Mercado chặn bot bằng captcha (reCAPTCHA) — job tự động không tự giải captcha được, bảng Mercado sẽ trống cho tới khi có đường lấy số hợp lệ khác."
+      );
+    }
+    // (2) Bấm đồng ý cookie nếu banner hiện — chỉ là đồng ý cookie, không phải giải captcha.
+    try {
+      const cookieBtn = page.locator("button:has-text('Aceptar cookies')").first();
+      if (await cookieBtn.isVisible({ timeout: 3000 })) {
+        await cookieBtn.click();
+        await page.waitForTimeout(2000);
+      }
+    } catch {
+      // Không có banner cookie: bỏ qua.
+    }
+    // (3) Chờ BẤT KỲ tên class kết quả nào (giao diện cũ + giao diện lưới mới), không chỉ 1 class cũ.
+    const resultSelector = ".ui-search-result, .ui-search-result__wrapper, .poly-card, [class*='ui-search-result']";
+    await page.waitForSelector(resultSelector, { timeout: 30000 });
+    const items = await page.$$eval(resultSelector, (cards) =>
       cards.slice(0, 50).map((card) => {
-        const titleEl = card.querySelector(".ui-search-item__title");
-        const linkEl = card.querySelector("a.ui-search-link");
+        const titleEl = card.querySelector(".ui-search-item__title, .poly-component__title");
+        const linkEl = card.querySelector("a.ui-search-link, a.poly-component__title");
         const priceEl = card.querySelector(".andes-money-amount__fraction");
-        const soldEl = card.querySelector(".ui-search-item__subtitle, .ui-search-item__group__element");
+        // "vendidos" có thể nằm ở bất kỳ đâu trong thẻ (dạng lưới mới không có subtitle riêng),
+        // nên tìm trong toàn bộ văn bản thẻ thay vì chỉ 1 phần tử con.
+        const cardText = card.innerText || "";
+        const soldMatch = cardText.match(/[\d.,+kK]+\s*vendid\w*/);
         return {
           title: titleEl ? titleEl.textContent.trim() : "",
           permalink: linkEl ? linkEl.href : null,
           priceText: priceEl ? priceEl.textContent.trim() : null,
-          soldText: soldEl ? soldEl.textContent.trim() : null,
+          soldText: soldMatch ? soldMatch[0] : null,
         };
       })
     );

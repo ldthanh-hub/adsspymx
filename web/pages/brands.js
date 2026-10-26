@@ -6,6 +6,43 @@ import { MARKET_LABELS, MARKET_CODES, avatarGradient, initials, facebookUrlFor, 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const TABLE_PAGE = 25;
 
+// DANH SÁCH BRAND ĐANG THEO DÕI (26/10/2026, khớp config/signals.js và config/competitors.js):
+// Dashboard mặc định CHỈ hiện 11 brand này (đã gộp Page thành Brand), không phải toàn bộ Page
+// đã phát hiện qua từ khóa ngành (Luum, L'Oréal, MAC... là nhiễu đối với mục đích phân tích đối
+// thủ của Đăng). Muốn xem tất cả Page thì bấm "Hiện tất cả Page đã phát hiện" ở ô Lọc theo Brand.
+// keys: từ khóa dùng cho API creative/trends (không dùng để gộp Page — xem pageMatchesTracked).
+const TRACKED_BRANDS = [
+  { name: "Medicube", keys: ["medicube"] },
+  { name: "Rejuran", keys: ["rejuran"] },
+  { name: "Anua", keys: ["anua"] },
+  { name: "VT", keys: ["vt"] },
+  { name: "EQQUALBERRY", keys: ["eqqualberry"] },
+  { name: "SKIN1004", keys: ["skin1004"] },
+  { name: "Dr. Althea", keys: ["dralthea", "dr. althea", "dr althea"] },
+  { name: "Eucerin", keys: ["eucerin"] },
+  { name: "Round Lab", keys: ["roundlab", "round lab"] },
+  { name: "Beauty of Joseon", keys: ["beautyofjoseon", "beauty of joseon"] },
+  { name: "Seyoul", keys: ["seyoul"] },
+];
+
+// Gộp Page vào Brand CHỈ theo TÊN PAGE, không theo từ khóa — sửa sau khi kiểm chứng thật
+// với API live ngày 26/10/2026: nếu gộp theo từ khóa thì Page "Amazon México Belleza" (23 ad,
+// chỉ vì 1 ad trong đó nhắc tới Seyoul nên keywords chứa "Seyoul") sẽ bị tính vào Brand Seyoul,
+// và cùng 1 Page sẽ bị tính vào nhiều Brand khác nhau, làm tổng ad bị thổi phồng và sai.
+// Quy tắc đúng: Page thuộc Brand khi tên Page chứa tên Brand (chuẩn hóa bỏ khoảng trắng/dấu
+// chấm/gạch dưới, VD "Dr.Althea" vẫn khớp "Dr. Althea", "Beauty of Joseon" khớp
+// "beautyofjoseon"). Affiliate dạng "X with Brand" cũng khớp vì tên đã chứa tên Brand.
+// VT là ngoại lệ: phải khớp theo từ độc lập (\bvt\b) hoặc bắt đầu bằng "VT", vì "vt" có thể
+// xuất hiện trong từ khác khi chuẩn hóa bỏ khoảng trắng.
+function pageMatchesTracked(page, tracked) {
+  const name = String(page.page_name || "");
+  if (tracked.name === "VT") {
+    return /\bvt\b/i.test(name) || /^vt[\s_\-]/i.test(name) || name.trim().toLowerCase() === "vt";
+  }
+  const norm = (s) => String(s).toLowerCase().replace(/[\s._\-]+/g, "");
+  return norm(name).includes(norm(tracked.name));
+}
+
 function LineChart({ points, width = 760, height = 180 }) {
   // points: [{day, value}] đã sort theo ngày tăng dần. Vẽ area chart SVG tay, không dùng lib
   // ngoài — dữ liệu nhỏ (tối đa 30 điểm), không cần thư viện chart nặng.
@@ -58,7 +95,12 @@ function LineChart({ points, width = 760, height = 180 }) {
       {coords.map((c, i) =>
         i % labelEvery === 0 ? (
           <text key={i} x={c.x} y={height - 8} fontSize="9.5" fill="#9799b8" textAnchor="middle">
-            {c.day.slice(5)}
+            {(() => {
+              const d = String(c.day);
+              // Ngày từ API là ISO "2025-10-06T00:00:00.000Z" — slice(5) cũ ra "10-06T00:00:00.000Z"
+              // (đúng lỗi trong ảnh Đăng gửi). Hiển thị dạng DD/MM, còn ngày không phải ISO thì giữ nguyên phần sau năm.
+              return d.length >= 10 && d[4] === "-" ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : d.slice(5);
+            })()}
           </text>
         ) : null
       )}
@@ -109,7 +151,8 @@ export default function BrandsDashboard() {
   const [mercadoSignals, setMercadoSignals] = useState([]);
   const [trendsSignals, setTrendsSignals] = useState([]);
   const [signalRuns, setSignalRuns] = useState([]);
-  const [selectedBrand, setSelectedBrand] = useState(null); // page_name đang LỌC toàn bộ dashboard (null = tất cả brand)
+  const [selectedBrand, setSelectedBrand] = useState(null); // tên Brand đang LỌC toàn bộ dashboard (null = tất cả brand)
+  const [showAllBrands, setShowAllBrands] = useState(false); // false = chỉ 11 brand đang theo dõi (mặc định), true = tất cả Page đã phát hiện
   const [brandTrend, setBrandTrend] = useState([]);
   const [brandTrendLoading, setBrandTrendLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(TABLE_PAGE);
@@ -222,16 +265,17 @@ export default function BrandsDashboard() {
   // Creative: khi đang lọc brand thì gọi API với từ khóa của Page đang chọn (VD "medicube"),
   // không phải tên Page đầy đủ — vì API lọc theo logic tìm brand (tên Page chứa brand, nội
   // dung nhắc brand, hoặc từ khóa đúng tên brand), dùng tên Page đầy đủ sẽ chỉ ra đúng 1 Page
-  // mà mất hết affiliate cùng từ khóa. Tìm selectedRow trong effect bằng brandStats trực tiếp
-  // (không dùng memo selectedRow ở dưới) để khỏi phụ thuộc thứ tự khai báo.
+  // mà mất hết affiliate cùng từ khóa. Tìm dòng trong effect bằng visibleStats (Brand gộp hoặc
+  // Page, tùy chế độ hiện) — effect chạy sau render nên không vướng thứ tự khai báo memo.
   useEffect(() => {
     if (!API_BASE) return;
     (async () => {
       try {
         let url = `${API_BASE}/api/competitors/creative`;
         if (selectedBrand) {
-          const row = brandStats.find((b) => b.page_name === selectedBrand);
-          const kw = row && row.keywords && row.keywords[0] ? row.keywords[0] : selectedBrand;
+          const tracked = TRACKED_BRANDS.find((tb) => tb.name === selectedBrand);
+          const row = visibleStats.find((b) => b.page_name === selectedBrand);
+          const kw = tracked ? tracked.keys[0] : row && row.keywords && row.keywords[0] ? row.keywords[0] : selectedBrand;
           url += `?brand=${encodeURIComponent(kw)}`;
         }
         const res = await fetch(url);
@@ -243,7 +287,7 @@ export default function BrandsDashboard() {
         // Backend cũ: giữ rỗng.
       }
     })();
-  }, [selectedBrand, brandStats]);
+  }, [selectedBrand, brandStats, showAllBrands]);
 
   // Đổi brand đang lọc thì quay lại trang đầu của bảng (tránh trường hợp bảng đã lọc chỉ
   // còn vài dòng mà visibleCount đang ở mức cao, nút Xem thêm hiện sai).
@@ -291,27 +335,80 @@ export default function BrandsDashboard() {
   // "Brand" ở đây = nhóm Page cùng từ khóa với Page đang chọn (VD chọn Page "Medicube with
   // DIBS on Trends" có từ khóa "medicube" thì lọc ra cả Page chính lẫn affiliate "X with
   // Medicube" — đúng định nghĩa brand chính + affiliate đã dùng ở ô Tìm thương hiệu, không
-  // phải chỉ 1 Page đơn lẻ). Khi không chọn brand nào thì filteredBrandStats = toàn bộ brandStats.
+  // phải chỉ 1 Page đơn lẻ). Khi không chọn brand nào thì filteredBrandStats = toàn bộ visibleStats
+  // (11 Brand gộp mặc định, hoặc tất cả Page khi đang hiện tất cả).
+  // GỘP PAGE THÀNH BRAND (Đăng phản hồi 26/10/2026: dashboard vẫn kéo hết toàn bộ Brand,
+  // không theo danh sách): mặc định, mọi số liệu trên trang tính từ brandGroups — mỗi brand
+  // đang theo dõi là 1 dòng duy nhất, tổng ad / đang chạy / tương tác là TỔNG của tất cả Page
+  // thuộc brand đó (VD Seyoul Mexico + Seyoul MX + Seyoul Cosméticos gộp thành 1 dòng "Seyoul",
+  // không còn 4 dòng Seyoul riêng lẻ như ảnh Đăng gửi). Khi showAllBrands = true thì visibleStats
+  // quay lại brandStats gốc (từng Page) để khám phá long-tail.
+  const trackedPages = useMemo(
+    () => brandStats.filter((page) => TRACKED_BRANDS.some((tb) => pageMatchesTracked(page, tb))),
+    [brandStats]
+  );
+  const brandGroups = useMemo(() => {
+    const groups = [];
+    for (const tb of TRACKED_BRANDS) {
+      const pages = trackedPages
+        .filter((page) => pageMatchesTracked(page, tb))
+        .sort((a, b) => Number(b.total) - Number(a.total));
+      if (!pages.length) continue;
+      const total = pages.reduce((s, b) => s + Number(b.total || 0), 0);
+      const sumField = (f) => pages.reduce((s, b) => s + Number(b[f] || 0), 0);
+      groups.push({
+        page_name: tb.name,
+        page_id: pages[0].page_id || null, // Page lớn nhất của brand — link Facebook ở bảng mở Page này
+        total: String(total),
+        active: String(sumField("active")),
+        max_days_active: Math.max(0, ...pages.map((b) => Number(b.max_days_active) || 0)),
+        avg_days_active: Math.round(
+          pages.reduce((s, b) => s + (Number(b.avg_days_active) || 0) * Number(b.total || 0), 0) / Math.max(1, total)
+        ),
+        total_likes: String(sumField("total_likes")),
+        total_comments: String(sumField("total_comments")),
+        total_shares: String(sumField("total_shares")),
+        total_video_views: String(sumField("total_video_views")),
+        engagement_parsed: String(sumField("engagement_parsed")),
+        categories: [...new Set(pages.flatMap((b) => b.categories || []))],
+        keywords: [...new Set([...tb.keys, ...pages.flatMap((b) => b.keywords || [])])],
+        first_seen_at: pages.map((b) => b.first_seen_at).filter(Boolean).sort()[0] || null,
+        last_seen_at: pages.map((b) => b.last_seen_at).filter(Boolean).sort().pop() || null,
+        isBrandGroup: true,
+        pages: pages.map((b) => ({ page_name: b.page_name, total: b.total, active: b.active })),
+      });
+    }
+    return groups.sort((a, b) => Number(b.total) - Number(a.total));
+  }, [trackedPages]);
+  const missingTrackedBrands = useMemo(
+    () => TRACKED_BRANDS.filter((tb) => !brandGroups.some((g) => g.page_name === tb.name)).map((tb) => tb.name),
+    [brandGroups]
+  );
+  const visibleStats = showAllBrands ? brandStats : brandGroups;
+  // basePages dùng cho panel affiliate: luôn là Page thật (không phải dòng Brand đã gộp, vì
+  // dòng gộp không có tên dạng "X with Brand"), và đã lọc về brand đang theo dõi khi không hiện tất cả.
+  const basePages = showAllBrands ? brandStats : trackedPages;
+
   const selectedRow = useMemo(
-    () => (selectedBrand ? brandStats.find((b) => b.page_name === selectedBrand) || null : null),
-    [selectedBrand, brandStats]
+    () => (selectedBrand ? visibleStats.find((b) => b.page_name === selectedBrand) || null : null),
+    [selectedBrand, visibleStats]
   );
   const filteredBrandStats = useMemo(() => {
-    if (!selectedBrand) return brandStats;
-    if (!selectedRow) return brandStats.filter((b) => b.page_name === selectedBrand);
+    if (!selectedBrand) return visibleStats;
+    if (!selectedRow) return visibleStats.filter((b) => b.page_name === selectedBrand);
     const keys = (selectedRow.keywords || []).map((k) => String(k).toLowerCase());
-    if (!keys.length) return brandStats.filter((b) => b.page_name === selectedBrand);
-    return brandStats.filter(
+    if (!keys.length) return visibleStats.filter((b) => b.page_name === selectedBrand);
+    return visibleStats.filter(
       (b) => b.page_name === selectedBrand || (b.keywords || []).some((k) => keys.includes(String(k).toLowerCase()))
     );
-  }, [selectedBrand, selectedRow, brandStats]);
+  }, [selectedBrand, selectedRow, visibleStats]);
   // Xu hướng hiệu dụng cho biểu đồ chính: khi đang lọc thì dùng xu hướng RIÊNG của brand
   // (đã fetch qua /api/trend?brand=...), khi không lọc thì dùng xu hướng chung toàn hệ thống.
   const effectiveTrendPoints = useMemo(
     () =>
       selectedBrand
-        ? brandTrend.map((tr) => ({ day: tr.day, value: Number(tr.ads_discovered) }))
-        : trend.map((tr) => ({ day: tr.day, value: Number(tr.ads_discovered) })),
+        ? brandTrend.map((tr) => ({ day: String(tr.day).slice(0, 10), value: Number(tr.ads_discovered) }))
+        : trend.map((tr) => ({ day: String(tr.day).slice(0, 10), value: Number(tr.ads_discovered) })),
     [selectedBrand, brandTrend, trend]
   );
 
@@ -357,18 +454,21 @@ export default function BrandsDashboard() {
   // mà danh sách chính đếm riêng từng Page, panel này gom lại để thấy brand nào được affiliate
   // nhắc nhiều nhất, dù mỗi affiliate chỉ có 1-2 ad.
   const affiliatePages = useMemo(() => {
-    const rows = filteredBrandStats
+    // Nguồn là Page thật: nếu đang lọc 1 Brand gộp thì chỉ lấy Page của brand đó, nếu không
+    // lọc thì lấy Page của các brand đang theo dõi (hoặc tất cả Page khi đang hiện tất cả).
+    const source = selectedRow && selectedRow.isBrandGroup ? selectedRow.pages : selectedBrand ? filteredBrandStats : basePages;
+    const rows = source
       .filter((b) => /\s+with\s+/i.test(b.page_name))
       .map((b) => ({ ...b, affiliateBrand: b.page_name.split(/\s+with\s+/i).pop().trim() }))
       .sort((a, b) => Number(b.total) - Number(a.total))
       .slice(0, 10);
     return rows;
-  }, [filteredBrandStats]);
+  }, [filteredBrandStats, selectedRow, selectedBrand, basePages]);
 
   const selectedAffiliates = useMemo(() => {
-    if (!selectedRow) return [];
+    if (!selectedRow || selectedRow.isBrandGroup) return [];
     const base = selectedRow.page_name;
-    return brandStats
+    return basePages
       .filter(
         (b) =>
           b.page_name !== base &&
@@ -377,7 +477,7 @@ export default function BrandsDashboard() {
       )
       .sort((a, b) => Number(b.total) - Number(a.total))
       .slice(0, 10);
-  }, [selectedRow, brandStats]);
+  }, [selectedRow, basePages]);
 
   const fmtNum = (n) => (n == null || n === "" ? "—" : Number(n).toLocaleString());
 
@@ -410,6 +510,15 @@ export default function BrandsDashboard() {
     regalo: "Tặng kèm",
     kit_bundle: "Bộ / Kit / Bundle",
     codigo: "Mã giảm giá",
+  };
+
+  // Rút gọn lỗi website thành 1 dòng dễ hiểu: bỏ tiền tố "page.goto:", bỏ phần "Call log"
+  // dài của Playwright, chỉ giữ lý do chính (VD ERR_SSL_PROTOCOL_ERROR, ERR_CONNECTION_CLOSED).
+  const shortWebsiteError = (msg) => {
+    if (!msg) return "Không mở được website";
+    let s = String(msg).replace(/^page\.goto:\s*/i, "").split("Call log:")[0].trim();
+    if (s.length > 90) s = s.slice(0, 90) + "…";
+    return s || "Không mở được website";
   };
 
   const websiteFiltered = useMemo(
@@ -566,40 +675,79 @@ export default function BrandsDashboard() {
                 )}
               </div>
               <p className="panel-sub">
-                Chọn 1 brand thì TOÀN BỘ số liệu trên trang này chỉ tính cho brand đó: thẻ thống kê,
-                biểu đồ xu hướng, Top 10, bảng tương tác, affiliate, bảng danh sách và cả 3 panel
-                tín hiệu Google / Mercado / TikTok. Bấm tên brand trong bất kỳ bảng nào cũng lọc
-                giống vậy. "Brand" ở đây gồm Page chính và các Page affiliate cùng từ khóa với Page
-                đó (VD Medicube gồm cả "X with Medicube").
+                Mặc định, trang này CHỈ hiện 11 brand đang theo dõi (10 đối thủ + Seyoul), mỗi brand
+                là 1 dòng duy nhất đã gộp tất cả Page của brand đó (VD Seyoul Mexico + Seyoul MX +
+                Seyoul Cosméticos gộp thành 1 dòng "Seyoul") — không còn kéo hết hàng trăm Page
+                phát hiện qua từ khóa ngành như Luum, L'Oréal, MAC. Chọn 1 brand thì TOÀN BỘ số liệu
+                trên trang này chỉ tính cho brand đó: thẻ thống kê, biểu đồ xu hướng, Top 10, bảng
+                tương tác, affiliate, bảng danh sách và cả 3 panel tín hiệu Google / Mercado /
+                TikTok. Bấm tên brand trong bất kỳ bảng nào cũng lọc giống vậy.
               </p>
               <div className="table-controls">
+                <button
+                  className={!showAllBrands ? "active" : ""}
+                  onClick={() => {
+                    setShowAllBrands(false);
+                    setSelectedBrand(null);
+                  }}
+                >
+                  11 brand đang theo dõi
+                </button>
+                <button
+                  className={showAllBrands ? "active" : ""}
+                  onClick={() => {
+                    setShowAllBrands(true);
+                    setSelectedBrand(null);
+                  }}
+                >
+                  Hiện tất cả Page đã phát hiện
+                </button>
+              </div>
+              <div className="table-controls" style={{ marginTop: 8 }}>
                 <select
                   value={selectedBrand || ""}
                   onChange={(e) => setSelectedBrand(e.target.value || null)}
                   style={{ minWidth: 260 }}
                 >
                   <option value="">Tất cả brand</option>
-                  {[...brandStats]
+                  {[...visibleStats]
                     .sort((a, b) => Number(b.total) - Number(a.total))
                     .map((b) => (
                       <option key={b.page_name} value={b.page_name}>
                         {b.page_name} ({b.total} ad)
+                        {b.isBrandGroup ? ` — ${b.pages.length} Page` : ""}
                       </option>
                     ))}
                 </select>
                 {selectedBrand && (
                   <span className="muted small" style={{ alignSelf: "center" }}>
-                    Đang lọc: <strong>{selectedBrand}</strong> — {filteredBrandStats.length} Page thuộc brand này,{" "}
+                    Đang lọc: <strong>{selectedBrand}</strong> —{" "}
+                    {selectedRow && selectedRow.isBrandGroup
+                      ? `${selectedRow.pages.length} Page thuộc brand này, `
+                      : `${filteredBrandStats.length} Page thuộc brand này, `}
                     {totals.totalAds} ad.
                   </span>
                 )}
               </div>
+              {!showAllBrands && missingTrackedBrands.length > 0 && (
+                <p className="panel-sub" style={{ marginTop: 8 }}>
+                  Trong thị trường đang chọn, các brand sau chưa có Page nào nên không hiện trong
+                  danh sách: {missingTrackedBrands.join(", ")} — chuyển sang "Tất cả (MX + US)" hoặc
+                  bấm "Hiện tất cả Page đã phát hiện" để kiểm tra.
+                </p>
+              )}
             </div>
 
             <div className="stat-row">
               <div className="stat-card">
                 <span className="stat-value">{totals.totalBrands}</span>
-                <span className="stat-label">{selectedBrand ? "Page thuộc brand đang lọc" : "Thương hiệu đã phát hiện"}</span>
+                <span className="stat-label">
+                  {selectedBrand
+                    ? "Page thuộc brand đang lọc"
+                    : showAllBrands
+                      ? "Thương hiệu đã phát hiện"
+                      : "Brand đang theo dõi (đã gộp Page)"}
+                </span>
               </div>
               <div className="stat-card accent-good">
                 <span className="stat-value">{totals.totalActive}</span>
@@ -777,6 +925,13 @@ export default function BrandsDashboard() {
                     </>
                   )}
                 </p>
+                {selectedRow.isBrandGroup && (
+                  <p className="panel-sub" style={{ marginTop: 12 }}>
+                    Các Page thuộc brand này ({selectedRow.pages.length} Page):{" "}
+                    {selectedRow.pages.map((pg) => `${pg.page_name} (${pg.total} ad, ${pg.active} đang chạy)`).join(" • ")}.
+                    Số liệu phía trên là TỔNG của tất cả các Page này, link Facebook ở bảng dưới mở Page lớn nhất.
+                  </p>
+                )}
                 <p className="panel-sub" style={{ marginTop: 12 }}>
                   Xu hướng của brand này xem ở biểu đồ "Ad mới phát hiện của brand đang lọc" phía trên — không vẽ
                   lại ở đây để khỏi trùng.
@@ -844,10 +999,13 @@ export default function BrandsDashboard() {
               <p className="panel-sub">
                 Nguồn: Mercado Libre Mexico (site MLM). Số đã bán là sold_quantity tích lũy của từng
                 listing, không phải doanh thu và không phải tổng bán của cả brand (1 brand có nhiều
-                listing trùng sản phẩm). API Mercado chặn IP máy chủ (403, kiểm chứng thật ngày
-                26/10/2026) nên job thử API trước, nếu bị chặn thì chuyển sang mở trang web bằng
-                trình duyệt thật — nếu cả 2 đều chặn, bảng dưới sẽ trống và trạng thái chạy sẽ ghi
-                rõ là bị chặn, không bịa số.
+                listing trùng sản phẩm). TÌNH TRẠNG THẬT ngày 26/10/2026: API Mercado chặn IP máy chủ
+                (403), và trang web Mercado chặn bot bằng tường captcha reCAPTCHA (kiểm chứng thật
+                bằng trình duyệt live: mở listado.mercadolibre.com.mx/medicube là bị chuyển sang
+                trang "Seguridad — Mercado Libre", phải tích "No soy un robot" mới thấy 1.790 kết
+                quả) — job tự động KHÔNG tự giải captcha được, nên bảng này sẽ trống và trạng thái
+                ghi rõ là captcha, không bịa số. Xem trực tiếp tại listado.mercadolibre.com.mx và
+                gõ tên brand vào ô tìm kiếm để xem giá/listing trong lúc chờ đường lấy số hợp lệ khác.
               </p>
               {mercadoBlocked.length > 0 && (
                 <p className="panel-sub" style={{ color: "#c0392b" }}>
@@ -964,10 +1122,23 @@ export default function BrandsDashboard() {
 
               <h4 style={{ margin: "16px 0 6px", fontSize: 13 }}>Website chính — giá + offer</h4>
               <p className="panel-sub">
+                <strong>Đọc panel này để làm gì:</strong> xem đối thủ ĐANG BÁN với offer nào ngay
+                hôm nay để so với offer của Seyoul — ví dụ Round Lab đang "20% off toàn shop cuối
+                tuần + miễn phí vận chuyển từ $25", SKIN1004 đang "giảm tới 50% + tặng merch" (đợt
+                xả hàng, không phải giá thường xuyên), Beauty of Joseon "miễn phí vận chuyển từ $70
+                + tích điểm đổi quà". Nếu đối thủ đang giảm sâu mà Seyoul giữ nguyên giá thì đó là
+                lý do khách so sánh và chần chừ — còn nếu đối thủ không có khuyến mãi rõ ràng thì
+                Seyoul không cần đua giảm giá, chỉ cần nhấn góc bán khác biệt.
+              </p>
+              <p className="panel-sub">
                 Job mở website chính thức của từng brand bằng trình duyệt thật, trích nguyên văn
                 các dòng khuyến mãi tìm thấy và tối đa 20 sản phẩm đầu tiên parse được giá. Giá
-                thấp - cao chỉ tính trên các sản phẩm parse được, không phải toàn shop. Trang nào
-                chặn bot thì trạng thái ghi rõ là blocked, không bịa giá.
+                thấp - cao chỉ tính trên các sản phẩm parse được, không phải toàn shop. <strong>Giới
+                hạn cần biết:</strong> job chỉ đọc TRANG CHỦ — brand nào để khuyến mãi ở trang
+                shop / trang khuyến mãi riêng mà trang chủ không ghi thì sẽ hiện "Không tìm thấy
+                dòng khuyến mãi rõ ràng", không phải là brand đó không có khuyến mãi. Trang nào
+                không mở được thì cột Trạng thái ghi rõ lý do ngắn gọn (lỗi SSL, kết nối bị đóng,
+                bị chặn), không hiện log kỹ thuật dài trong cột Promo nữa.
               </p>
               {websiteFiltered.length === 0 ? (
                 <p className="chart-empty">Chưa có dữ liệu website — chạy workflow fetch-competitors lần đầu.</p>
@@ -991,21 +1162,31 @@ export default function BrandsDashboard() {
                             <strong>{r.brand}</strong>
                           </td>
                           <td>
-                            <a href={r.website_url} target="_blank" rel="noreferrer">
-                              {r.website_url ? r.website_url.replace("https://", "").replace("www.", "") : "—"}
-                            </a>
+                            {r.website_url ? (
+                              <a href={r.website_url} target="_blank" rel="noreferrer">
+                                {r.website_url.replace("https://", "").replace("www.", "")}
+                              </a>
+                            ) : (
+                              "—"
+                            )}
                           </td>
                           <td>
-                            {r.promo_texts && r.promo_texts.length
-                              ? r.promo_texts.slice(0, 3).join(" • ")
-                              : r.status === "success"
-                                ? "Không tìm thấy dòng khuyến mãi rõ ràng"
-                                : r.error_message || "—"}
+                            {r.status === "success"
+                              ? r.promo_texts && r.promo_texts.length
+                                ? r.promo_texts.slice(0, 3).join(" • ")
+                                : "Không tìm thấy dòng khuyến mãi rõ ràng"
+                              : "—"}
                           </td>
                           <td>
                             {r.price_min == null ? "—" : `${fmtNum(r.price_min)} - ${fmtNum(r.price_max)}`}
                           </td>
-                          <td>{r.status}</td>
+                          <td>
+                            {r.status === "success"
+                              ? "OK"
+                              : r.status === "not_configured"
+                                ? "Chưa cấu hình website chính thức"
+                                : `Không mở được: ${shortWebsiteError(r.error_message)}`}
+                          </td>
                           <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
                         </tr>
                       ))}
@@ -1192,10 +1373,11 @@ export default function BrandsDashboard() {
                 </div>
               </div>
               <p className="panel-sub">
-                Ngành hàng gắn cứng theo cấu hình từ khóa/thương hiệu (server/src/config/keywords.js), không suy đoán
-                bằng cách so chuỗi tên. Danh sách đầy đủ, không lọc số ad tối thiểu — affiliate 1-2 ad vẫn hiện.
-                Google Trends / Mercado Libre / TikTok chưa có trong dashboard này — đó là nguồn dữ liệu mới,
-                sẽ thêm thành panel riêng sau, không trộn vào số liệu Meta hiện tại.
+                Mặc định, bảng này CHỈ liệt kê 11 brand đang theo dõi (mỗi brand 1 dòng, đã gộp Page) —
+                không phải toàn bộ Page đã phát hiện. Muốn xem tất cả Page thì bấm "Hiện tất cả Page đã
+                phát hiện" ở ô Lọc theo Brand phía trên. Ngành hàng gắn cứng theo cấu hình từ khóa/thương
+                hiệu (server/src/config/keywords.js), không suy đoán bằng cách so chuỗi tên. Danh sách
+                đầy đủ, không lọc số ad tối thiểu — affiliate 1-2 ad vẫn hiện trong số tổng của brand.
               </p>
               <div className="table-wrap">
                 <table>
@@ -1223,6 +1405,7 @@ export default function BrandsDashboard() {
                                 {initials(b.page_name)}
                               </span>
                               {b.page_name}
+                              {b.isBrandGroup && <span className="muted small"> ({b.pages.length} Page)</span>}
                             </div>
                           </td>
                           <td>
