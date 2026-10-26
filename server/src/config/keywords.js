@@ -128,6 +128,30 @@ export const MARKETS = {
       { keyword: "Round Lab", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "Beauty of Joseon", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
 
+      // --- CHECKLIST 30 BRAND (26/10/2026 — Đăng yêu cầu: xóa 2 nút chuyển chế độ, dashboard
+      // chỉ hiện checklist; đây là phần quét Meta cho checklist đó) ---
+      // Nguồn: tìm kiếm ngày 26/10/2026 — US: top skincare lists (CeraVe, La Roche-Posay,
+      // Neutrogena, Cetaphil, Olay, The Ordinary, Clinique, Paula's Choice, SkinCeuticals,
+      // Estée Lauder, Aveeno, Drunk Elephant, Glow Recipe) + L'Oréal/Lancôme; MX: báo cáo thị
+      // trường Mexico (Natura, Arabela, Jafra, Nivea, Mary Kay). Brand đã có sẵn trong config từ
+      // trước (Bissú, Ahal, Maybelline, L'Oréal Paris, Avon, M.A.C, Pai Pai...) KHÔNG thêm lại
+      // để tránh trùng lượt quét. Tổng lượt quét mới: MX +11, US +15 = +26 lượt, từ 76 lên 102
+      // lượt/ngày (mỗi lượt ~40-70 giây theo ghi chú ở đầu file). Brand mới chưa có Page trong
+      // DB là bình thường — sau lần cron Meta đầu tiên (20:00 giờ Việt Nam hàng ngày) thì Page
+      // mới xuất hiện trong Dashboard checklist, không cần deploy lại.
+      // MX: 7 brand cả MX+US + 4 brand chủ yếu MX
+      { keyword: "CeraVe", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "La Roche-Posay", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Neutrogena", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Cetaphil", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Olay", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Nivea", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Lancôme", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Natura", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Arabela", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Jafra", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Mary Kay", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],
   },
@@ -181,6 +205,24 @@ export const MARKETS = {
       { keyword: "Eucerin", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "Round Lab", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "Beauty of Joseon", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+
+      // --- CHECKLIST 30 BRAND (26/10/2026 — xem ghi chú ở MX, cùng 1 checklist) ---
+      // US: 7 brand cả MX+US + 8 brand chủ yếu US
+      { keyword: "CeraVe", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "La Roche-Posay", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Neutrogena", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Cetaphil", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Olay", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Nivea", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Lancôme", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "The Ordinary", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Clinique", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Paula's Choice", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "SkinCeuticals", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Estée Lauder", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Aveeno", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Drunk Elephant", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Glow Recipe", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
 
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],

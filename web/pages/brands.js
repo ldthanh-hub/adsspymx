@@ -11,7 +11,16 @@ const TABLE_PAGE = 25;
 // đã phát hiện qua từ khóa ngành (Luum, L'Oréal, MAC... là nhiễu đối với mục đích phân tích đối
 // thủ của Đăng). Muốn xem tất cả Page thì bấm "Hiện tất cả Page đã phát hiện" ở ô Lọc theo Brand.
 // keys: từ khóa dùng cho API creative/trends (không dùng để gộp Page — xem pageMatchesTracked).
+// CHECKLIST 30 BRAND (26/10/2026 — Đăng yêu cầu: chỉ cần checklist này là đủ, xóa 2 nút
+// chuyển chế độ, dashboard không còn chế độ "xem tất cả Page" nữa):
+//   Nhóm A — Brand của Đăng (11, từ 2 file Excel creative SEYOUL + Seyoul): giữ nguyên.
+//   Nhóm B — Brand lớn mới (19): US skincare/mỹ phẩm lớn + MX lớn, đã kiểm chứng qua tìm kiếm
+//   ngày 26/10/2026 (xem ghi chú ở keywords.js). Brand nào đã có sẵn trong config quét từ trước
+//   (Bissú, Ahal, Maybelline, L'Oréal Paris, Avon, M.A.C, Pai Pai, Kosas...) thì KHÔNG thêm
+//   vào đây để tránh trùng — chúng vẫn được quét, chỉ không nằm trong checklist Dashboard này
+//   vì checklist này là danh sách Đăng chốt để theo dõi tập trung, không phải toàn bộ config quét.
 const TRACKED_BRANDS = [
+  // Nhóm A — Brand của Đăng
   { name: "Medicube", keys: ["medicube"] },
   { name: "Rejuran", keys: ["rejuran"] },
   { name: "Anua", keys: ["anua"] },
@@ -23,6 +32,28 @@ const TRACKED_BRANDS = [
   { name: "Round Lab", keys: ["roundlab", "round lab"] },
   { name: "Beauty of Joseon", keys: ["beautyofjoseon", "beauty of joseon"] },
   { name: "Seyoul", keys: ["seyoul"] },
+  // Nhóm B — Brand lớn mới, cả MX+US
+  { name: "CeraVe", keys: ["cerave"] },
+  { name: "La Roche-Posay", keys: ["la roche-posay", "larocheposay"] },
+  { name: "Neutrogena", keys: ["neutrogena"] },
+  { name: "Cetaphil", keys: ["cetaphil"] },
+  { name: "Olay", keys: ["olay"] },
+  { name: "Nivea", keys: ["nivea"] },
+  { name: "Lancôme", keys: ["lancôme", "lancome"] },
+  // Nhóm B — Brand lớn mới, chủ yếu Mỹ
+  { name: "The Ordinary", keys: ["the ordinary", "theordinary"] },
+  { name: "Clinique", keys: ["clinique"] },
+  { name: "Paula's Choice", keys: ["paula's choice", "paulas choice"] },
+  { name: "SkinCeuticals", keys: ["skinceuticals"] },
+  { name: "Estée Lauder", keys: ["estée lauder", "estee lauder"] },
+  { name: "Aveeno", keys: ["aveeno"] },
+  { name: "Drunk Elephant", keys: ["drunk elephant", "drunkelephant"] },
+  { name: "Glow Recipe", keys: ["glow recipe", "glowrecipe"] },
+  // Nhóm B — Brand lớn mới, chủ yếu Mexico
+  { name: "Natura", keys: ["natura"] },
+  { name: "Arabela", keys: ["arabela"] },
+  { name: "Jafra", keys: ["jafra"] },
+  { name: "Mary Kay", keys: ["mary kay", "marykay"] },
 ];
 
 // Gộp Page vào Brand CHỈ theo TÊN PAGE, không theo từ khóa — sửa sau khi kiểm chứng thật
@@ -36,8 +67,13 @@ const TRACKED_BRANDS = [
 // xuất hiện trong từ khác khi chuẩn hóa bỏ khoảng trắng.
 function pageMatchesTracked(page, tracked) {
   const name = String(page.page_name || "");
+  // VT, Natura, Olay: khớp theo TỪ độc lập — "Naturales" không được tính là "Natura",
+  // "VT" không được tính khi nằm trong từ khác.
   if (tracked.name === "VT") {
     return /\bvt\b/i.test(name) || /^vt[\s_\-]/i.test(name) || name.trim().toLowerCase() === "vt";
+  }
+  if (tracked.name === "Natura" || tracked.name === "Olay") {
+    return new RegExp(`\\b${tracked.name}\\b`, "i").test(name);
   }
   const norm = (s) => String(s).toLowerCase().replace(/[\s._\-]+/g, "");
   return norm(name).includes(norm(tracked.name));
@@ -152,7 +188,7 @@ export default function BrandsDashboard() {
   const [trendsSignals, setTrendsSignals] = useState([]);
   const [signalRuns, setSignalRuns] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null); // tên Brand đang LỌC toàn bộ dashboard (null = tất cả brand)
-  const [showAllBrands, setShowAllBrands] = useState(false); // false = chỉ 11 brand đang theo dõi (mặc định), true = tất cả Page đã phát hiện
+
   const [brandTrend, setBrandTrend] = useState([]);
   const [brandTrendLoading, setBrandTrendLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(TABLE_PAGE);
@@ -287,7 +323,7 @@ export default function BrandsDashboard() {
         // Backend cũ: giữ rỗng.
       }
     })();
-  }, [selectedBrand, brandStats, showAllBrands]);
+  }, [selectedBrand, brandStats]);
 
   // Đổi brand đang lọc thì quay lại trang đầu của bảng (tránh trường hợp bảng đã lọc chỉ
   // còn vài dòng mà visibleCount đang ở mức cao, nút Xem thêm hiện sai).
@@ -341,8 +377,8 @@ export default function BrandsDashboard() {
   // không theo danh sách): mặc định, mọi số liệu trên trang tính từ brandGroups — mỗi brand
   // đang theo dõi là 1 dòng duy nhất, tổng ad / đang chạy / tương tác là TỔNG của tất cả Page
   // thuộc brand đó (VD Seyoul Mexico + Seyoul MX + Seyoul Cosméticos gộp thành 1 dòng "Seyoul",
-  // không còn 4 dòng Seyoul riêng lẻ như ảnh Đăng gửi). Khi showAllBrands = true thì visibleStats
-  // quay lại brandStats gốc (từng Page) để khám phá long-tail.
+  // không còn 4 dòng Seyoul riêng lẻ như ảnh Đăng gửi).
+  // Không còn chế độ xem tất cả Page — muốn xem long-tail thì bảo em thêm lại 1 nút duy nhất.
   const trackedPages = useMemo(
     () => brandStats.filter((page) => TRACKED_BRANDS.some((tb) => pageMatchesTracked(page, tb))),
     [brandStats]
@@ -384,10 +420,12 @@ export default function BrandsDashboard() {
     () => TRACKED_BRANDS.filter((tb) => !brandGroups.some((g) => g.page_name === tb.name)).map((tb) => tb.name),
     [brandGroups]
   );
-  const visibleStats = showAllBrands ? brandStats : brandGroups;
+  // Xóa 2 nút chuyển chế độ (Đăng yêu cầu 26/10/2026): dashboard CHỈ hiện checklist, không
+  // còn chế độ "Hiện tất cả Page đã phát hiện" nữa — visibleStats luôn là brandGroups.
+  const visibleStats = brandGroups;
   // basePages dùng cho panel affiliate: luôn là Page thật (không phải dòng Brand đã gộp, vì
-  // dòng gộp không có tên dạng "X with Brand"), và đã lọc về brand đang theo dõi khi không hiện tất cả.
-  const basePages = showAllBrands ? brandStats : trackedPages;
+  // dòng gộp không có tên dạng "X with Brand"), và đã lọc về brand trong checklist.
+  const basePages = trackedPages;
 
   const selectedRow = useMemo(
     () => (selectedBrand ? visibleStats.find((b) => b.page_name === selectedBrand) || null : null),
@@ -675,34 +713,15 @@ export default function BrandsDashboard() {
                 )}
               </div>
               <p className="panel-sub">
-                Mặc định, trang này CHỈ hiện 11 brand đang theo dõi (10 đối thủ + Seyoul), mỗi brand
-                là 1 dòng duy nhất đã gộp tất cả Page của brand đó (VD Seyoul Mexico + Seyoul MX +
-                Seyoul Cosméticos gộp thành 1 dòng "Seyoul") — không còn kéo hết hàng trăm Page
-                phát hiện qua từ khóa ngành như Luum, L'Oréal, MAC. Chọn 1 brand thì TOÀN BỘ số liệu
-                trên trang này chỉ tính cho brand đó: thẻ thống kê, biểu đồ xu hướng, Top 10, bảng
-                tương tác, affiliate, bảng danh sách và cả 3 panel tín hiệu Google / Mercado /
-                TikTok. Bấm tên brand trong bất kỳ bảng nào cũng lọc giống vậy.
+                Trang này CHỈ hiện checklist 30 brand (11 brand của Đăng + 19 brand mỹ phẩm/chăm sóc
+                da lớn tại Mỹ và Mexico, chốt ngày 26/10/2026), mỗi brand là 1 dòng duy nhất đã gộp
+                tất cả Page của brand đó (VD Seyoul Mexico + Seyoul MX + Seyoul Cosméticos gộp thành
+                1 dòng "Seyoul") — không còn kéo hết hàng trăm Page phát hiện qua từ khóa ngành
+                như Luum, MAC. Chọn 1 brand thì TOÀN BỘ số liệu trên trang này chỉ tính cho brand
+                đó: thẻ thống kê, biểu đồ xu hướng, Top 10, bảng tương tác, affiliate, bảng danh
+                sách và cả 3 panel tín hiệu Google / Mercado / TikTok. Bấm tên brand trong bất kỳ
+                bảng nào cũng lọc giống vậy.
               </p>
-              <div className="table-controls">
-                <button
-                  className={!showAllBrands ? "active" : ""}
-                  onClick={() => {
-                    setShowAllBrands(false);
-                    setSelectedBrand(null);
-                  }}
-                >
-                  11 brand đang theo dõi
-                </button>
-                <button
-                  className={showAllBrands ? "active" : ""}
-                  onClick={() => {
-                    setShowAllBrands(true);
-                    setSelectedBrand(null);
-                  }}
-                >
-                  Hiện tất cả Page đã phát hiện
-                </button>
-              </div>
               <div className="table-controls" style={{ marginTop: 8 }}>
                 <select
                   value={selectedBrand || ""}
@@ -729,11 +748,13 @@ export default function BrandsDashboard() {
                   </span>
                 )}
               </div>
-              {!showAllBrands && missingTrackedBrands.length > 0 && (
+              {missingTrackedBrands.length > 0 && (
                 <p className="panel-sub" style={{ marginTop: 8 }}>
                   Trong thị trường đang chọn, các brand sau chưa có Page nào nên không hiện trong
-                  danh sách: {missingTrackedBrands.join(", ")} — chuyển sang "Tất cả (MX + US)" hoặc
-                  bấm "Hiện tất cả Page đã phát hiện" để kiểm tra.
+                  danh sách: {missingTrackedBrands.join(", ")}. Đây là bình thường với brand mới
+                  thêm vào checklist — cron Meta quét từ khóa mới mỗi ngày lúc 20:00 giờ Việt Nam,
+                  sau lần quét đầu tiên thì Page của brand đó mới xuất hiện ở đây (không cần deploy
+                  lại, dữ liệu tự vào DB là dashboard tự hiện).
                 </p>
               )}
             </div>
@@ -742,11 +763,7 @@ export default function BrandsDashboard() {
               <div className="stat-card">
                 <span className="stat-value">{totals.totalBrands}</span>
                 <span className="stat-label">
-                  {selectedBrand
-                    ? "Page thuộc brand đang lọc"
-                    : showAllBrands
-                      ? "Thương hiệu đã phát hiện"
-                      : "Brand đang theo dõi (đã gộp Page)"}
+                  {selectedBrand ? "Page thuộc brand đang lọc" : "Brand trong checklist (đã gộp Page)"}
                 </span>
               </div>
               <div className="stat-card accent-good">
@@ -1373,9 +1390,8 @@ export default function BrandsDashboard() {
                 </div>
               </div>
               <p className="panel-sub">
-                Mặc định, bảng này CHỈ liệt kê 11 brand đang theo dõi (mỗi brand 1 dòng, đã gộp Page) —
-                không phải toàn bộ Page đã phát hiện. Muốn xem tất cả Page thì bấm "Hiện tất cả Page đã
-                phát hiện" ở ô Lọc theo Brand phía trên. Ngành hàng gắn cứng theo cấu hình từ khóa/thương
+                Bảng này CHỈ liệt kê 30 brand trong checklist (mỗi brand 1 dòng, đã gộp Page) —
+                không phải toàn bộ Page đã phát hiện. Ngành hàng gắn cứng theo cấu hình từ khóa/thương
                 hiệu (server/src/config/keywords.js), không suy đoán bằng cách so chuỗi tên. Danh sách
                 đầy đủ, không lọc số ad tối thiểu — affiliate 1-2 ad vẫn hiện trong số tổng của brand.
               </p>
