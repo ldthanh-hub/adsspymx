@@ -390,6 +390,75 @@ app.get("/api/signals/runs", async (req, res, next) => {
   }
 });
 
+// ============ ĐỐI THỦ MỞ RỘNG (thêm 26/10/2026 — website, creative, social) ============
+// Tất cả chỉ đọc snapshot MỚI NHẤT mỗi brand (DISTINCT ON), không cộng chung với số Meta.
+// Creative: ?brand= lọc theo logic tìm brand (tên Page chứa brand, nội dung nhắc brand,
+// hoặc từ khóa đúng tên brand) — giống /api/ads?brand=. Một ad có thể nhiều góc/offer nên
+// tổng số ad theo góc sẽ lớn hơn tổng ad thật, frontend ghi chú rõ.
+app.get("/api/competitors/website", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (brand) brand, website_url, page_title, promo_texts, products, price_min, price_max, currency, status, error_message, fetched_at
+       FROM website_snapshots ORDER BY brand, fetched_at DESC`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/competitors/social", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (brand, source) brand, source, handle, channel_name, followers, video_count, top_video, url, status, error_message, fetched_at
+       FROM social_profiles ORDER BY brand, source, fetched_at DESC`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/competitors/creative", async (req, res, next) => {
+  try {
+    const brand = req.query.brand ? String(req.query.brand) : null;
+    const values = [];
+    let brandCond = "";
+    if (brand) {
+      values.push(`%${brand}%`);
+      brandCond = `AND (a.page_name ILIKE $1 OR a.creative_text ILIKE $1 OR a.keyword ILIKE $1)`;
+    }
+    const angles = await pool.query(
+      `SELECT unnest(c.angles) AS angle, COUNT(*) AS total_ads,
+              COUNT(*) FILTER (WHERE a.is_active) AS active_ads,
+              MAX(a.days_active) AS max_days_active
+       FROM creative_analysis c JOIN ads a ON a.ad_id = c.ad_id
+       WHERE a.category = 'Mỹ phẩm & Làm đẹp' ${brandCond}
+       GROUP BY angle ORDER BY total_ads DESC`,
+      values
+    );
+    const offers = await pool.query(
+      `SELECT unnest(c.offers) AS offer, COUNT(*) AS total_ads,
+              COUNT(*) FILTER (WHERE a.is_active) AS active_ads,
+              MAX(a.days_active) AS max_days_active
+       FROM creative_analysis c JOIN ads a ON a.ad_id = c.ad_id
+       WHERE a.category = 'Mỹ phẩm & Làm đẹp' ${brandCond}
+       GROUP BY offer ORDER BY total_ads DESC`,
+      values
+    );
+    const examples = await pool.query(
+      `SELECT a.ad_id, a.page_name, a.creative_text, a.snapshot_url, a.days_active, a.is_active, c.angles, c.offers, c.ai_summary
+       FROM creative_analysis c JOIN ads a ON a.ad_id = c.ad_id
+       WHERE a.category = 'Mỹ phẩm & Làm đẹp' AND a.is_active ${brandCond}
+       ORDER BY a.days_active DESC NULLS LAST LIMIT 10`,
+      values
+    );
+    res.json({ data: { angles: angles.rows, offers: offers.rows, examples: examples.rows } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Error handler tập trung — log đầy đủ ở server, trả về client thông điệp chung chung.
 app.use((err, req, res, _next) => {
   console.error("[api] Lỗi xử lý request:", err);

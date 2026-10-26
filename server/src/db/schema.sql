@@ -148,3 +148,59 @@ CREATE TABLE IF NOT EXISTS google_trends (
   fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_google_trends_brand ON google_trends (brand, fetched_at DESC);
+
+-- ============ ĐỐI THỦ MỞ RỘNG (thêm 26/10/2026 — website, creative, social) ============
+-- website_snapshots: 1 dòng = 1 lần job mở website chính của 1 brand. promo_texts là các
+-- chuỗi khuyến mãi tìm thấy trên trang (VD "20% OFF", "Buy 1 Get 1") — trích nguyên văn, không
+-- suy ra offer nếu trang không ghi rõ. products là tối đa 20 sản phẩm đầu tiên parse được
+-- (tên + giá), price_min/max chỉ tính trên các sản phẩm parse được giá, không phải toàn shop.
+CREATE TABLE IF NOT EXISTS website_snapshots (
+  id           SERIAL PRIMARY KEY,
+  brand        TEXT NOT NULL,
+  website_url  TEXT NOT NULL,
+  page_title   TEXT,
+  promo_texts  JSONB,
+  products     JSONB,
+  price_min    NUMERIC,
+  price_max    NUMERIC,
+  currency     TEXT,
+  status       TEXT NOT NULL DEFAULT 'success',  -- success | blocked | error
+  error_message TEXT,
+  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_website_snapshots_brand ON website_snapshots (brand, fetched_at DESC);
+
+-- creative_analysis: phân loại rule-based cho từng ad (1 ad có thể nhiều góc, nhiều offer).
+-- angles/offers là mảng key theo config/competitors.js (VD ["melasma","vitamina_c"]).
+-- ai_summary chỉ có khi job gọi Pollinations thành công cho ad đó (top ad bền nhất) — nếu
+-- AI lỗi thì ai_summary = NULL, dữ liệu rule vẫn đầy đủ, không được đọc NULL là "không có góc".
+CREATE TABLE IF NOT EXISTS creative_analysis (
+  ad_id      TEXT PRIMARY KEY,
+  angles     TEXT[] NOT NULL DEFAULT '{}',
+  offers     TEXT[] NOT NULL DEFAULT '{}',
+  hook       TEXT,
+  ai_summary TEXT,
+  analyzed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_creative_analysis_angles ON creative_analysis USING GIN (angles);
+CREATE INDEX IF NOT EXISTS idx_creative_analysis_offers ON creative_analysis USING GIN (offers);
+
+-- social_profiles: 1 dòng = 1 lần job lấy 1 kênh social của 1 brand. followers ở đây là
+-- subscribers (YouTube) hoặc followers (Facebook/Instagram) — đơn vị khác nhau theo nguồn,
+-- panel hiển thị kèm tên nguồn, không cộng chung. status ghi rõ api_key_missing (YouTube
+-- chưa có key), blocked (trang chặn bot), not_configured (Instagram chưa có handle).
+CREATE TABLE IF NOT EXISTS social_profiles (
+  id           SERIAL PRIMARY KEY,
+  brand        TEXT NOT NULL,
+  source       TEXT NOT NULL,              -- youtube | facebook | instagram
+  handle       TEXT,
+  channel_name TEXT,
+  followers    BIGINT,
+  video_count  INT,
+  top_video    JSONB,
+  url          TEXT,
+  status       TEXT NOT NULL DEFAULT 'success',
+  error_message TEXT,
+  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_social_profiles_brand ON social_profiles (brand, source, fetched_at DESC);

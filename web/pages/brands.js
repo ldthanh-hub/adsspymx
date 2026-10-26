@@ -102,11 +102,14 @@ export default function BrandsDashboard() {
   const [tableSort, setTableSort] = useState("total"); // total | active | endurance | engagement
   // Tín hiệu ngoài Meta — fetch riêng, lỗi ở đây KHÔNG được làm hỏng dashboard Meta chính:
   // backend cũ chưa có endpoint /api/signals/* sẽ trả 404, frontend bắt và hiện "Chưa có dữ liệu".
+  const [websiteData, setWebsiteData] = useState([]);
+  const [socialData, setSocialData] = useState([]);
+  const [creativeData, setCreativeData] = useState({ angles: [], offers: [], examples: [] });
   const [tiktokSignals, setTiktokSignals] = useState([]);
   const [mercadoSignals, setMercadoSignals] = useState([]);
   const [trendsSignals, setTrendsSignals] = useState([]);
   const [signalRuns, setSignalRuns] = useState([]);
-  const [selectedBrand, setSelectedBrand] = useState(null); // page_name đang phân tích sâu
+  const [selectedBrand, setSelectedBrand] = useState(null); // page_name đang LỌC toàn bộ dashboard (null = tất cả brand)
   const [brandTrend, setBrandTrend] = useState([]);
   const [brandTrendLoading, setBrandTrendLoading] = useState(false);
   const [visibleCount, setVisibleCount] = useState(TABLE_PAGE);
@@ -200,6 +203,54 @@ export default function BrandsDashboard() {
     })();
   }, []);
 
+  // Kéo website + social 1 lần khi mở trang (backend cũ 404 thì giữ rỗng, panel hiện "Chưa có dữ liệu").
+  useEffect(() => {
+    if (!API_BASE) return;
+    (async () => {
+      const load = async (path, setter) => {
+        try {
+          const res = await fetch(`${API_BASE}${path}`);
+          if (res.ok) setter((await res.json()).data || []);
+        } catch {
+          // Backend cũ chưa có endpoint: giữ rỗng.
+        }
+      };
+      await Promise.all([load("/api/competitors/website", setWebsiteData), load("/api/competitors/social", setSocialData)]);
+    })();
+  }, []);
+
+  // Creative: khi đang lọc brand thì gọi API với từ khóa của Page đang chọn (VD "medicube"),
+  // không phải tên Page đầy đủ — vì API lọc theo logic tìm brand (tên Page chứa brand, nội
+  // dung nhắc brand, hoặc từ khóa đúng tên brand), dùng tên Page đầy đủ sẽ chỉ ra đúng 1 Page
+  // mà mất hết affiliate cùng từ khóa. Tìm selectedRow trong effect bằng brandStats trực tiếp
+  // (không dùng memo selectedRow ở dưới) để khỏi phụ thuộc thứ tự khai báo.
+  useEffect(() => {
+    if (!API_BASE) return;
+    (async () => {
+      try {
+        let url = `${API_BASE}/api/competitors/creative`;
+        if (selectedBrand) {
+          const row = brandStats.find((b) => b.page_name === selectedBrand);
+          const kw = row && row.keywords && row.keywords[0] ? row.keywords[0] : selectedBrand;
+          url += `?brand=${encodeURIComponent(kw)}`;
+        }
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = await res.json();
+          setCreativeData(json.data || { angles: [], offers: [], examples: [] });
+        }
+      } catch {
+        // Backend cũ: giữ rỗng.
+      }
+    })();
+  }, [selectedBrand, brandStats]);
+
+  // Đổi brand đang lọc thì quay lại trang đầu của bảng (tránh trường hợp bảng đã lọc chỉ
+  // còn vài dòng mà visibleCount đang ở mức cao, nút Xem thêm hiện sai).
+  useEffect(() => {
+    setVisibleCount(TABLE_PAGE);
+  }, [selectedBrand]);
+
   // Xu hướng RIÊNG của brand đang chọn: gọi /api/trend?brand=... từng thị trường rồi gộp ngày
   // (giống cách gộp dashboard chính) — brand ở đây khớp OR giống /api/ads nên xu hướng của 1
   // brand đã cấu hình (VD "Medicube") sẽ gồm cả ad affiliate nhắc tới brand đó, không chỉ Page chính.
@@ -234,33 +285,61 @@ export default function BrandsDashboard() {
     })();
   }, [selectedBrand, countryFilter]);
 
+  // LỌC TOÀN BỘ DASHBOARD THEO BRAND (Đăng yêu cầu 26/10/2026): trước đây bấm 1 brand chỉ
+  // hiện panel phân tích sâu, còn thẻ thống kê, biểu đồ xu hướng, Top 10, bảng vẫn lấy hết
+  // tất cả brand — giờ selectedBrand là bộ lọc CHUNG cho mọi số liệu Meta trên trang.
+  // "Brand" ở đây = nhóm Page cùng từ khóa với Page đang chọn (VD chọn Page "Medicube with
+  // DIBS on Trends" có từ khóa "medicube" thì lọc ra cả Page chính lẫn affiliate "X with
+  // Medicube" — đúng định nghĩa brand chính + affiliate đã dùng ở ô Tìm thương hiệu, không
+  // phải chỉ 1 Page đơn lẻ). Khi không chọn brand nào thì filteredBrandStats = toàn bộ brandStats.
+  const selectedRow = useMemo(
+    () => (selectedBrand ? brandStats.find((b) => b.page_name === selectedBrand) || null : null),
+    [selectedBrand, brandStats]
+  );
+  const filteredBrandStats = useMemo(() => {
+    if (!selectedBrand) return brandStats;
+    if (!selectedRow) return brandStats.filter((b) => b.page_name === selectedBrand);
+    const keys = (selectedRow.keywords || []).map((k) => String(k).toLowerCase());
+    if (!keys.length) return brandStats.filter((b) => b.page_name === selectedBrand);
+    return brandStats.filter(
+      (b) => b.page_name === selectedBrand || (b.keywords || []).some((k) => keys.includes(String(k).toLowerCase()))
+    );
+  }, [selectedBrand, selectedRow, brandStats]);
+  // Xu hướng hiệu dụng cho biểu đồ chính: khi đang lọc thì dùng xu hướng RIÊNG của brand
+  // (đã fetch qua /api/trend?brand=...), khi không lọc thì dùng xu hướng chung toàn hệ thống.
+  const effectiveTrendPoints = useMemo(
+    () =>
+      selectedBrand
+        ? brandTrend.map((tr) => ({ day: tr.day, value: Number(tr.ads_discovered) }))
+        : trend.map((tr) => ({ day: tr.day, value: Number(tr.ads_discovered) })),
+    [selectedBrand, brandTrend, trend]
+  );
+
   // BỎ ngưỡng >=5 ad (Đăng đính chính 26/10/2026, sau khi chốt ngưỡng lúc 10:45 cùng ngày):
   // affiliate của đối thủ thường chỉ có 1-2 ad, và mục tiêu của anh là khai thác TỐI ĐA brand
   // đối thủ — nên danh sách mặc định quay lại đầy đủ (MX+US, thuần mỹ phẩm), không lọc số ad.
   // Khi đang tìm trong bảng thì tìm cả theo từ khóa gắn với Page, không giới hạn số ad.
   const totals = useMemo(() => {
-    const totalAds = brandStats.reduce((s, b) => s + Number(b.total || 0), 0);
-    const totalActive = brandStats.reduce((s, b) => s + Number(b.active || 0), 0);
-    const longest = brandStats.reduce((m, b) => Math.max(m, Number(b.max_days_active) || 0), 0);
-    return { totalBrands: brandStats.length, totalAds, totalActive, longest };
-  }, [brandStats]);
+    const totalAds = filteredBrandStats.reduce((s, b) => s + Number(b.total || 0), 0);
+    const totalActive = filteredBrandStats.reduce((s, b) => s + Number(b.active || 0), 0);
+    const longest = filteredBrandStats.reduce((m, b) => Math.max(m, Number(b.max_days_active) || 0), 0);
+    return { totalBrands: filteredBrandStats.length, totalAds, totalActive, longest };
+  }, [filteredBrandStats]);
 
-  const trendPoints = useMemo(
-    () => trend.map((t) => ({ day: t.day, value: Number(t.ads_discovered) })),
-    [trend]
-  );
-
-  const industryBreakdown = useMemo(
-    () =>
-      keywordStats
-        .filter((k) => k.type === "industry" && k.category === "Mỹ phẩm & Làm đẹp")
-        .sort((a, b) => Number(b.total) - Number(a.total)),
-    [keywordStats]
-  );
+  const industryBreakdown = useMemo(() => {
+    const base = keywordStats.filter((k) => k.type === "industry" && k.category === "Mỹ phẩm & Làm đẹp");
+    if (!selectedBrand) return base.sort((a, b) => Number(b.total) - Number(a.total));
+    // Khi đang lọc brand: chỉ hiện các từ khóa ngành đã dẫn tới ad của brand đang lọc.
+    const keys = new Set();
+    for (const b of filteredBrandStats) for (const k of b.keywords || []) keys.add(String(k));
+    return base
+      .filter((k) => keys.has(k.keyword))
+      .sort((a, b) => Number(b.total) - Number(a.total));
+  }, [keywordStats, selectedBrand, filteredBrandStats]);
 
   const topActiveBrands = useMemo(
-    () => [...brandStats].sort((a, b) => Number(b.active) - Number(a.active)).slice(0, 10),
-    [brandStats]
+    () => [...filteredBrandStats].sort((a, b) => Number(b.active) - Number(a.active)).slice(0, 10),
+    [filteredBrandStats]
   );
 
   // Tương tác của 1 Page = like + comment + share (KHÔNG cộng video_views — view khác đơn vị).
@@ -269,8 +348,8 @@ export default function BrandsDashboard() {
   const interactionsOf = (b) => Number(b.total_likes || 0) + Number(b.total_comments || 0) + Number(b.total_shares || 0);
 
   const topEngagementBrands = useMemo(
-    () => [...brandStats].sort((a, b) => interactionsOf(b) - interactionsOf(a)).slice(0, 10),
-    [brandStats]
+    () => [...filteredBrandStats].sort((a, b) => interactionsOf(b) - interactionsOf(a)).slice(0, 10),
+    [filteredBrandStats]
   );
 
   // Affiliate / Page đăng chung: tên Page chứa " with " (VD "Chris Han with Medicube",
@@ -278,18 +357,13 @@ export default function BrandsDashboard() {
   // mà danh sách chính đếm riêng từng Page, panel này gom lại để thấy brand nào được affiliate
   // nhắc nhiều nhất, dù mỗi affiliate chỉ có 1-2 ad.
   const affiliatePages = useMemo(() => {
-    const rows = brandStats
+    const rows = filteredBrandStats
       .filter((b) => /\s+with\s+/i.test(b.page_name))
       .map((b) => ({ ...b, affiliateBrand: b.page_name.split(/\s+with\s+/i).pop().trim() }))
       .sort((a, b) => Number(b.total) - Number(a.total))
       .slice(0, 10);
     return rows;
-  }, [brandStats]);
-
-  const selectedRow = useMemo(
-    () => (selectedBrand ? brandStats.find((b) => b.page_name === selectedBrand) || null : null),
-    [selectedBrand, brandStats]
-  );
+  }, [filteredBrandStats]);
 
   const selectedAffiliates = useMemo(() => {
     if (!selectedRow) return [];
@@ -307,11 +381,61 @@ export default function BrandsDashboard() {
 
   const fmtNum = (n) => (n == null || n === "" ? "—" : Number(n).toLocaleString());
 
+  // Tín hiệu của brand đang lọc: signal brand (VD "Medicube") khớp khi tên signal brand
+  // trùng từ khóa của Page đang chọn, hoặc tên Page đang chọn chứa tên signal brand.
+  // Brand không nằm trong danh sách tín hiệu 11 brand (VD Luum Skincare) thì panel tín hiệu
+  // sẽ trống với ghi chú riêng, không phải "chưa chạy workflow".
+  const signalMatchesFilter = (signalBrand) => {
+    if (!selectedBrand) return true;
+    const sb = String(signalBrand).toLowerCase();
+    const keys = (selectedRow?.keywords || []).map((k) => String(k).toLowerCase());
+    return keys.includes(sb) || selectedBrand.toLowerCase().includes(sb) || sb.includes(selectedBrand.toLowerCase());
+  };
+
+  // Nhãn tiếng Việt cho key góc bán / offer (khớp config/competitors.js — sửa ở đó thì sửa ở đây theo).
+  const CREATIVE_LABELS = {
+    melasma: "Melasma / đốm nâu",
+    hidratacion: "Dưỡng ẩm",
+    vitamina_c: "Vitamin C / làm sáng",
+    retinol: "Retinol / chống lão hóa",
+    niacinamide: "Niacinamide",
+    pdrn_collagen: "PDRN / Collagen / Peptide",
+    protector_solar: "Chống nắng",
+    acne_poros: "Mụn / lỗ chân lông",
+    sensible: "Da nhạy cảm / làm dịu",
+    exfoliacion: "Tẩy tế bào chết / peel",
+    descuento_pct: "Giảm %",
+    dos_por_uno: "2x1 / Mua 1 tặng 1",
+    envio_gratis: "Miễn phí vận chuyển",
+    regalo: "Tặng kèm",
+    kit_bundle: "Bộ / Kit / Bundle",
+    codigo: "Mã giảm giá",
+  };
+
+  const websiteFiltered = useMemo(
+    () => [...websiteData].filter((r) => signalMatchesFilter(r.brand)).sort((a, b) => a.brand.localeCompare(b.brand)),
+    // signalMatchesFilter dùng selectedBrand/selectedRow nên deps phải gồm cả 2, dù hàm này
+    // được khai báo ở dưới (trong render, memo này chạy sau khi hàm đã khai báo xong).
+    [websiteData, selectedBrand, selectedRow]
+  );
+
+  // Social: gom theo brand -> { youtube, facebook, instagram } để vẽ 1 dòng / brand.
+  const socialByBrand = useMemo(() => {
+    const map = new Map();
+    for (const r of socialData) {
+      if (!signalMatchesFilter(r.brand)) continue;
+      if (!map.has(r.brand)) map.set(r.brand, { brand: r.brand });
+      map.get(r.brand)[r.source] = r;
+    }
+    return [...map.values()].sort((a, b) => a.brand.localeCompare(b.brand));
+  }, [socialData, selectedBrand, selectedRow]);
+
+
   // Mercado: gom listing theo brand — tổng đã bán chỉ tính các listing có sold_quantity,
   // listing không parse được số bán thì không cộng vào (không đoán), giá lấy min/max có thật.
   const mercadoSummary = useMemo(() => {
     const map = new Map();
-    for (const row of mercadoSignals) {
+    for (const row of mercadoSignals.filter((r) => signalMatchesFilter(r.brand))) {
       const prev = map.get(row.brand) || {
         brand: row.brand,
         count: 0,
@@ -336,7 +460,7 @@ export default function BrandsDashboard() {
       map.set(row.brand, prev);
     }
     return [...map.values()].sort((a, b) => b.totalSold - a.totalSold);
-  }, [mercadoSignals]);
+  }, [mercadoSignals, selectedBrand, selectedRow]);
 
   // Trạng thái chạy gần nhất theo nguồn — để panel hiện đúng "đang chạy tốt / bị chặn / lỗi"
   // thay vì im lặng khi không có số.
@@ -357,17 +481,18 @@ export default function BrandsDashboard() {
   // các brand — khác với Trends, mỗi brand chuẩn hóa riêng). VT và Round Lab dùng hashtag
   // cụ thể đã ghi trong config/signals.js, không phải tên brand thô.
   const tiktokSorted = useMemo(
-    () => [...tiktokSignals].sort((a, b) => Number(b.view_count || 0) - Number(a.view_count || 0)),
-    [tiktokSignals]
+    () =>
+      [...tiktokSignals]
+        .filter((r) => signalMatchesFilter(r.brand))
+        .sort((a, b) => Number(b.view_count || 0) - Number(a.view_count || 0)),
+    [tiktokSignals, selectedBrand, selectedRow]
   );
 
   // Trends: KHÔNG xếp hạng theo interest_avg — mỗi brand chuẩn hóa riêng về đỉnh 100 của
   // chính nó, xếp hạng sẽ gây hiểu nhầm. Sắp xếp theo tên để đọc từng brand độc lập.
-  const trendsSorted = useMemo(() => [...trendsSignals].sort((a, b) => a.brand.localeCompare(b.brand)), [trendsSignals]);
-
-  const brandTrendPoints = useMemo(
-    () => brandTrend.map((t) => ({ day: t.day, value: Number(t.ads_discovered) })),
-    [brandTrend]
+  const trendsSorted = useMemo(
+    () => [...trendsSignals].filter((r) => signalMatchesFilter(r.brand)).sort((a, b) => a.brand.localeCompare(b.brand)),
+    [trendsSignals, selectedBrand, selectedRow]
   );
 
   const filteredTable = useMemo(() => {
@@ -383,7 +508,7 @@ export default function BrandsDashboard() {
       });
     if (text) {
       return sortRows(
-        brandStats.filter(
+        filteredBrandStats.filter(
           (b) =>
             b.page_name.toLowerCase().includes(text) ||
             (b.keywords || []).some((k) => String(k).toLowerCase().includes(text))
@@ -394,11 +519,11 @@ export default function BrandsDashboard() {
     // loại Page lẫn category Thời trang (VD SHEIN Mexico) khỏi danh sách đối thủ mỹ phẩm.
     // Không lọc số ad tối thiểu: affiliate 1-2 ad vẫn hiện đầy đủ.
     return sortRows(
-      brandStats.filter(
+      filteredBrandStats.filter(
         (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
       )
     );
-  }, [brandStats, debouncedTableSearch, tableSort]);
+  }, [filteredBrandStats, debouncedTableSearch, tableSort]);
 
   return (
     <Layout active="brands">
@@ -431,10 +556,50 @@ export default function BrandsDashboard() {
           <p className="muted">Đang tải...</p>
         ) : (
           <>
+            <div className="panel" style={{ marginBottom: 18 }}>
+              <div className="table-head">
+                <h3>Lọc theo Brand</h3>
+                {selectedBrand && (
+                  <button className="btn-load-more" onClick={() => setSelectedBrand(null)}>
+                    Xóa lọc — xem tất cả brand
+                  </button>
+                )}
+              </div>
+              <p className="panel-sub">
+                Chọn 1 brand thì TOÀN BỘ số liệu trên trang này chỉ tính cho brand đó: thẻ thống kê,
+                biểu đồ xu hướng, Top 10, bảng tương tác, affiliate, bảng danh sách và cả 3 panel
+                tín hiệu Google / Mercado / TikTok. Bấm tên brand trong bất kỳ bảng nào cũng lọc
+                giống vậy. "Brand" ở đây gồm Page chính và các Page affiliate cùng từ khóa với Page
+                đó (VD Medicube gồm cả "X with Medicube").
+              </p>
+              <div className="table-controls">
+                <select
+                  value={selectedBrand || ""}
+                  onChange={(e) => setSelectedBrand(e.target.value || null)}
+                  style={{ minWidth: 260 }}
+                >
+                  <option value="">Tất cả brand</option>
+                  {[...brandStats]
+                    .sort((a, b) => Number(b.total) - Number(a.total))
+                    .map((b) => (
+                      <option key={b.page_name} value={b.page_name}>
+                        {b.page_name} ({b.total} ad)
+                      </option>
+                    ))}
+                </select>
+                {selectedBrand && (
+                  <span className="muted small" style={{ alignSelf: "center" }}>
+                    Đang lọc: <strong>{selectedBrand}</strong> — {filteredBrandStats.length} Page thuộc brand này,{" "}
+                    {totals.totalAds} ad.
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="stat-row">
               <div className="stat-card">
                 <span className="stat-value">{totals.totalBrands}</span>
-                <span className="stat-label">Thương hiệu đã phát hiện</span>
+                <span className="stat-label">{selectedBrand ? "Page thuộc brand đang lọc" : "Thương hiệu đã phát hiện"}</span>
               </div>
               <div className="stat-card accent-good">
                 <span className="stat-value">{totals.totalActive}</span>
@@ -451,12 +616,20 @@ export default function BrandsDashboard() {
             </div>
 
             <div className="panel">
-              <h3>Ad mới phát hiện theo ngày — 30 ngày qua</h3>
+              <h3>
+                {selectedBrand ? `Ad mới phát hiện của brand đang lọc — 30 ngày qua` : "Ad mới phát hiện theo ngày — 30 ngày qua"}
+              </h3>
               <p className="panel-sub">
                 Đây là ngày công cụ NHÌN THẤY ad lần đầu (không phải ngày Facebook thật sự bắt đầu chạy ad) — phản ánh
                 nhịp độ phát hiện của chính pipeline, không phải xu hướng chi tiêu thị trường thật.
+                {selectedBrand &&
+                  " Khi đang lọc brand, biểu đồ này tính theo logic tìm brand (tên Page chứa brand, nội dung nhắc brand, hoặc từ khóa đúng tên brand), nên có thể gồm cả ad affiliate nhắc tới brand."}
               </p>
-              <LineChart points={trendPoints} />
+              {selectedBrand && brandTrendLoading ? (
+                <p className="muted">Đang tải xu hướng của brand...</p>
+              ) : (
+                <LineChart points={effectiveTrendPoints} />
+              )}
             </div>
 
             <div className="panel-grid">
@@ -568,7 +741,7 @@ export default function BrandsDashboard() {
                 <div className="table-head">
                   <h3>Phân tích sâu: {selectedRow.page_name}</h3>
                   <button className="btn-load-more" onClick={() => setSelectedBrand(null)}>
-                    Đóng
+                    Xóa lọc
                   </button>
                 </div>
                 <div className="stat-row" style={{ marginTop: 12 }}>
@@ -604,12 +777,10 @@ export default function BrandsDashboard() {
                     </>
                   )}
                 </p>
-                <h3 style={{ marginTop: 14 }}>Ad mới phát hiện của brand này — 30 ngày qua</h3>
-                {brandTrendLoading ? (
-                  <p className="muted">Đang tải xu hướng...</p>
-                ) : (
-                  <LineChart points={brandTrendPoints} />
-                )}
+                <p className="panel-sub" style={{ marginTop: 12 }}>
+                  Xu hướng của brand này xem ở biểu đồ "Ad mới phát hiện của brand đang lọc" phía trên — không vẽ
+                  lại ở đây để khỏi trùng.
+                </p>
                 <div style={{ marginTop: 12 }}>
                   <Link href={`/?brand=${encodeURIComponent(selectedRow.page_name)}`} className="btn-view-ads">
                     Xem quảng cáo của brand này
@@ -635,7 +806,11 @@ export default function BrandsDashboard() {
                 "vtcosmetics", Round Lab dùng "roundlabskincare" (xem ghi chú trong config/signals.js).
               </p>
               {tiktokSorted.length === 0 ? (
-                <p className="chart-empty">Chưa có dữ liệu TikTok — chạy workflow fetch-signals lần đầu.</p>
+                <p className="chart-empty">
+                  {selectedBrand && tiktokSignals.length > 0
+                    ? "Brand đang lọc chưa có trong danh sách tín hiệu 11 brand (TikTok chỉ theo dõi 10 đối thủ + Seyoul)."
+                    : "Chưa có dữ liệu TikTok — chạy workflow fetch-signals lần đầu."}
+                </p>
               ) : (
                 <div className="table-wrap">
                   <table>
@@ -683,8 +858,9 @@ export default function BrandsDashboard() {
               )}
               {mercadoSummary.length === 0 ? (
                 <p className="chart-empty">
-                  Chưa có dữ liệu Mercado — chạy workflow fetch-signals lần đầu. Trong lúc chờ, xem
-                  trực tiếp tại listado.mercadolibre.com.mx và gõ tên brand vào ô tìm kiếm.
+                  {selectedBrand && mercadoSignals.length > 0
+                    ? "Brand đang lọc chưa có trong danh sách tín hiệu 11 brand (Mercado chỉ theo dõi 10 đối thủ + Seyoul)."
+                    : "Chưa có dữ liệu Mercado — chạy workflow fetch-signals lần đầu. Trong lúc chờ, xem trực tiếp tại listado.mercadolibre.com.mx và gõ tên brand vào ô tìm kiếm."}
                 </p>
               ) : (
                 <div className="table-wrap">
@@ -738,7 +914,11 @@ export default function BrandsDashboard() {
                 ngày nào trong chuỗi điểm của brand đó.
               </p>
               {trendsSorted.length === 0 ? (
-                <p className="chart-empty">Chưa có dữ liệu Google Trends — chạy workflow fetch-signals lần đầu.</p>
+                <p className="chart-empty">
+                  {selectedBrand && trendsSignals.length > 0
+                    ? "Brand đang lọc chưa có trong danh sách tín hiệu 11 brand (Trends chỉ theo dõi 10 đối thủ + Seyoul)."
+                    : "Chưa có dữ liệu Google Trends — chạy workflow fetch-signals lần đầu."}
+                </p>
               ) : (
                 <div className="table-wrap">
                   <table>
@@ -763,6 +943,229 @@ export default function BrandsDashboard() {
                           <td>{r.interest_max ?? "—"}</td>
                           <td>{r.interest_last ?? "—"}</td>
                           <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="panel">
+              <h3>Đối thủ mở rộng — Website, Creative, Social</h3>
+              <p className="panel-sub">
+                3 panel dưới đây là dữ liệu MỚI, tách riêng khỏi số Meta và tín hiệu Google /
+                Mercado / TikTok ở trên. Dữ liệu do job fetch-competitors kéo 1 lần/ngày (GitHub
+                Actions, 09:00 giờ Mexico), không phải realtime. Chưa có dữ liệu nghĩa là job chưa
+                chạy lần nào — vào GitHub repo, tab Actions, workflow "Fetch đối thủ mở rộng",
+                bấm Run workflow để kéo lần đầu.
+                {selectedBrand && " Đang lọc theo brand đang chọn ở đầu trang."}
+              </p>
+
+              <h4 style={{ margin: "16px 0 6px", fontSize: 13 }}>Website chính — giá + offer</h4>
+              <p className="panel-sub">
+                Job mở website chính thức của từng brand bằng trình duyệt thật, trích nguyên văn
+                các dòng khuyến mãi tìm thấy và tối đa 20 sản phẩm đầu tiên parse được giá. Giá
+                thấp - cao chỉ tính trên các sản phẩm parse được, không phải toàn shop. Trang nào
+                chặn bot thì trạng thái ghi rõ là blocked, không bịa giá.
+              </p>
+              {websiteFiltered.length === 0 ? (
+                <p className="chart-empty">Chưa có dữ liệu website — chạy workflow fetch-competitors lần đầu.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Thương hiệu</th>
+                        <th>Website</th>
+                        <th>Promo / Offer tìm thấy</th>
+                        <th>Giá thấp - cao</th>
+                        <th>Trạng thái</th>
+                        <th>Cập nhật</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {websiteFiltered.map((r) => (
+                        <tr key={r.brand}>
+                          <td>
+                            <strong>{r.brand}</strong>
+                          </td>
+                          <td>
+                            <a href={r.website_url} target="_blank" rel="noreferrer">
+                              {r.website_url ? r.website_url.replace("https://", "").replace("www.", "") : "—"}
+                            </a>
+                          </td>
+                          <td>
+                            {r.promo_texts && r.promo_texts.length
+                              ? r.promo_texts.slice(0, 3).join(" • ")
+                              : r.status === "success"
+                                ? "Không tìm thấy dòng khuyến mãi rõ ràng"
+                                : r.error_message || "—"}
+                          </td>
+                          <td>
+                            {r.price_min == null ? "—" : `${fmtNum(r.price_min)} - ${fmtNum(r.price_max)}`}
+                          </td>
+                          <td>{r.status}</td>
+                          <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Creative Meta — góc bán + offer (phân loại rule-based)</h4>
+              <p className="panel-sub">
+                Phân loại bằng từ khóa cố định trên nội dung ad đã có trong DB (không gọi AI cho
+                mọi ad, nên chạy được ngay, không tốn tiền). Một ad có thể thuộc nhiều góc và nhiều
+                offer cùng lúc, nên tổng số ad theo góc sẽ lớn hơn tổng ad thật — đừng cộng các
+                dòng lại. AI tóm tắt (Pollinations miễn phí, DeepSeek đang hết số dư nên không dùng)
+                chỉ làm cho tối đa 10 ad bền nhất đang chạy, nếu AI lỗi thì phần đó để trống nhưng
+                số liệu rule vẫn đầy đủ.
+                {selectedBrand && " Bảng này đã lọc theo brand đang chọn."}
+              </p>
+              {creativeData.angles.length === 0 && creativeData.offers.length === 0 ? (
+                <p className="chart-empty">Chưa có dữ liệu creative — chạy workflow fetch-competitors lần đầu (nguồn creative).</p>
+              ) : (
+                <>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Góc bán</th>
+                          <th>Tổng ad</th>
+                          <th>Đang chạy</th>
+                          <th>Bền nhất (ngày)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {creativeData.angles.map((r) => (
+                          <tr key={r.angle}>
+                            <td>{CREATIVE_LABELS[r.angle] || r.angle}</td>
+                            <td>{r.total_ads}</td>
+                            <td>{r.active_ads}</td>
+                            <td>{r.max_days_active ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="table-wrap" style={{ marginTop: 12 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Offer</th>
+                          <th>Tổng ad</th>
+                          <th>Đang chạy</th>
+                          <th>Bền nhất (ngày)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {creativeData.offers.map((r) => (
+                          <tr key={r.offer}>
+                            <td>{CREATIVE_LABELS[r.offer] || r.offer}</td>
+                            <td>{r.total_ads}</td>
+                            <td>{r.active_ads}</td>
+                            <td>{r.max_days_active ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {creativeData.examples.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <p className="panel-sub">Ad bền nhất đang chạy (kèm tóm tắt AI nếu có):</p>
+                      {creativeData.examples.slice(0, 5).map((ex) => (
+                        <p key={ex.ad_id} className="panel-sub">
+                          <strong>{ex.page_name}</strong> ({ex.days_active ?? "—"} ngày) —{" "}
+                          {(ex.angles || []).map((k) => CREATIVE_LABELS[k] || k).join(", ") || "chưa phân loại góc"}
+                          {ex.ai_summary ? ` — AI: ${ex.ai_summary}` : ""}
+                          {ex.snapshot_url ? (
+                            <>
+                              {" "}
+                              <a href={ex.snapshot_url} target="_blank" rel="noreferrer">
+                                Xem ad ↗
+                              </a>
+                            </>
+                          ) : null}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Social — YouTube + Facebook + Instagram</h4>
+              <p className="panel-sub">
+                YouTube: có key API (GitHub secret YOUTUBE_API_KEY, anh tự tạo trên Google Cloud)
+                thì dùng API chính thức, không có key thì tìm kênh bằng trang kết quả tìm kiếm
+                YouTube qua trình duyệt thật — nếu YouTube chặn bot thì trạng thái ghi blocked.
+                Facebook: lấy Page có nhiều ad nhất của brand từ chính bảng ads, không đoán slug.
+                Instagram: chưa cấu hình handle chính thức cho brand nào nên hiện tại ghi
+                not_configured — anh gửi handle IG chính thức là thêm vào config là chạy được.
+                Số followers/subscribers ở đây là số công khai tại thời điểm job chạy, không phải
+                số realtime.
+              </p>
+              {socialByBrand.length === 0 ? (
+                <p className="chart-empty">Chưa có dữ liệu social — chạy workflow fetch-competitors lần đầu (nguồn social).</p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Thương hiệu</th>
+                        <th>YouTube</th>
+                        <th>Facebook</th>
+                        <th>Instagram</th>
+                        <th>Cập nhật</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {socialByBrand.map((r) => (
+                        <tr key={r.brand}>
+                          <td>
+                            <strong>{r.brand}</strong>
+                          </td>
+                          <td>
+                            {r.youtube ? (
+                              r.youtube.status === "success" ? (
+                                <>
+                                  {r.youtube.channel_name || "—"} — {fmtNum(r.youtube.followers)} subs
+                                  {r.youtube.url ? (
+                                    <>
+                                      {" "}
+                                      <a href={r.youtube.url} target="_blank" rel="noreferrer">
+                                        Xem ↗
+                                      </a>
+                                    </>
+                                  ) : null}
+                                </>
+                              ) : (
+                                `Trạng thái: ${r.youtube.status}`
+                              )
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td>
+                            {r.facebook ? (
+                              r.facebook.status === "success" ? (
+                                <>
+                                  {r.facebook.channel_name || "—"} — {fmtNum(r.facebook.followers)} followers
+                                </>
+                              ) : (
+                                `Trạng thái: ${r.facebook.status}`
+                              )
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td>
+                            {r.instagram ? `Trạng thái: ${r.instagram.status} (chưa cấu hình handle)` : "—"}
+                          </td>
+                          <td>
+                            {r.youtube?.fetched_at ? String(r.youtube.fetched_at).slice(0, 10) : "—"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

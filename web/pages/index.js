@@ -250,7 +250,9 @@ export default function Home() {
     return formatRelativeDate(max);
   }, [ads]);
 
-  // Chỉ hiển thị các ngành hàng đang THEO DÕI (SCAN_CATEGORIES) trong bộ lọc "Ngành hàng" — lọc bỏ
+  // Chỉ hiển thị các ngành hàng đang THEO DÕI (SCAN_CATEGORIES) trong bộ lọc "Từ khoá" (đổi tên
+  // từ "Ngành hàng" ngày 26/10/2026 vì dropdown này liệt kê cả từ khóa ngành lẫn từ khóa brand,
+  // gọi là Ngành hàng gây hiểu nhầm là chỉ lọc ngành) — lọc bỏ
   // những category đã gỡ khỏi keywords.js (VD "Đồ gia dụng") nhưng vẫn còn thấy ở đây vì ads CŨ quét
   // trước đó chưa bị xoá khỏi DB (gỡ khỏi danh sách theo dõi chỉ ngừng quét thêm, không xoá dữ liệu
   // đã có — xem ghi chú trong config/keywords.js). Đây là lọc HIỂN THỊ thuần frontend, không cần
@@ -381,7 +383,7 @@ export default function Home() {
             </button>
           </div>
 
-          <Dropdown label="Ngành hàng" count={selectedKeywords.size} width={260}>
+          <Dropdown label="Từ khoá" count={selectedKeywords.size} width={260}>
             <div className="dd-head">
               <span>{industryItems.length} từ khóa</span>
               {selectedKeywords.size > 0 && (
@@ -479,7 +481,7 @@ export default function Home() {
         )}
 
         <p className="hint-text bar-hint">
-          Ngành hàng + Thương hiệu kết hợp được với nhau (VD: chọn "Chăm sóc da" + "Pai Pai"). Không có bộ lọc "Nền
+          Từ khoá + Thương hiệu kết hợp được với nhau (VD: chọn "Chăm sóc da" + "Pai Pai"). Không có bộ lọc "Nền
           tảng" riêng từng ad (Facebook/Instagram...) — đã kiểm tra trực tiếp, Meta không hiển thị nhãn nào để đọc ra
           tên nền tảng một cách đáng tin cậy cho từng quảng cáo.
         </p>

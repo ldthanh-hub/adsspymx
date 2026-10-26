@@ -1,0 +1,53 @@
+name: Fetch đối thủ mở rộng (Website, Creative, Social)
+
+# Lịch: 15:00 UTC = 09:00 giờ Mexico City — chạy SAU job signals (14:00 UTC) 1 tiếng để
+# tránh 2 job cùng lúc. workflow_dispatch để bấm chạy tay test.
+on:
+  schedule:
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Nguồn cần kéo (all = cả 3)"
+        required: false
+        default: "all"
+        type: choice
+        options: [all, website, creative, social]
+      brand:
+        description: "Chỉ kéo 1 brand (để trống = cả 11 brand)"
+        required: false
+        default: ""
+
+jobs:
+  fetch-competitors:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Cài dependencies
+        run: npm install
+
+      - name: Áp dụng cấu trúc database mới nhất
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run migrate
+
+      - name: Cài Chromium cho Playwright
+        run: npx playwright install --with-deps chromium
+
+      # YOUTUBE_API_KEY là secret TÙY CHỌN: có thì job YouTube dùng API chính thức, không có
+      # thì job chuyển sang Playwright tìm kênh — không có key vẫn chạy được, chỉ kém tin cậy hơn.
+      - name: Chạy job kéo đối thủ mở rộng
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: npm run fetch:competitors -- --source=${{ inputs.source || 'all' }} ${{ inputs.brand && format('--brand={0}', inputs.brand) || '' }}
