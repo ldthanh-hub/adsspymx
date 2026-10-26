@@ -171,11 +171,39 @@ app.get("/api/ads", async (req, res, next) => {
   }
 });
 
-// Schema dùng chung cho các endpoint thống kê (/api/keywords, /api/brands, /api/trend) — chỉ có
-// 1 tham số "country" để scope theo thị trường, không truyền = gộp tất cả thị trường.
+// Schema dùng chung cho các endpoint thống kê (/api/keywords, /api/brands, /api/trend).
+// Từ 26/10/2026: "country" cho phép nhiều thị trường cách nhau bởi dấu phẩy (VD "MX,US") và
+// "category" lọc theo ngành hàng — vì từ lần thu hẹp phạm vi, "Tất cả" trên giao diện chỉ còn
+// nghĩa là MX+US + Mỹ phẩm & Làm đẹp, KHÔNG còn gộp KR/TH/MY hay Thời trang từ dữ liệu cũ trong DB.
+// Không truyền country/category = gộp tất cả (giữ tương thích ngược cho script cũ), frontend mới
+// luôn truyền rõ MX,US + Mỹ phẩm & Làm đẹp nên không bao giờ rơi vào trường hợp gộp tất cả nữa.
 const statsQuerySchema = z.object({
-  country: z.string().max(10).optional(),
+  country: z.string().max(200).optional(),
+  category: z.string().max(500).optional(),
 });
+
+// Điều kiện scope chung cho các endpoint thống kê: country = giao nhau với mảng countries,
+// category = khớp đúng category của ad (lọc TRƯỚC khi GROUP BY nên /api/brands chỉ tính ad
+// thuộc category đó — brand chỉ có ad Thời trang sẽ biến mất khỏi danh sách, không chỉ bị đổi số).
+function statsConditions(parsed, values) {
+  const conditions = [];
+  const { country, category } = parsed.data;
+  if (country) {
+    const list = splitList(country, 10);
+    if (list.length) {
+      values.push(list);
+      conditions.push(`countries && $${values.length}::text[]`);
+    }
+  }
+  if (category) {
+    const list = splitList(category, 20);
+    if (list.length) {
+      values.push(list);
+      conditions.push(`category = ANY($${values.length}::text[])`);
+    }
+  }
+  return conditions;
+}
 
 // Trả thêm category + keyword_type (gắn cứng từ config/keywords.js lúc quét) để giao diện tự chia
 // nhóm "Ngành hàng" (industry) / "Thương hiệu đã cấu hình" (brand) mà KHÔNG cần tự đoán bằng cách
@@ -186,13 +214,8 @@ app.get("/api/keywords", async (req, res, next) => {
     if (!parsed.success) {
       return res.status(400).json({ error: "Tham số không hợp lệ", details: parsed.error.issues });
     }
-    const { country } = parsed.data;
-    const conditions = [];
     const values = [];
-    if (country) {
-      values.push(country);
-      conditions.push(`$${values.length} = ANY(countries)`);
-    }
+    const conditions = statsConditions(parsed, values);
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const { rows } = await pool.query(
@@ -225,13 +248,8 @@ app.get("/api/brands", async (req, res, next) => {
     if (!parsed.success) {
       return res.status(400).json({ error: "Tham số không hợp lệ", details: parsed.error.issues });
     }
-    const { country } = parsed.data;
-    const conditions = [];
     const values = [];
-    if (country) {
-      values.push(country);
-      conditions.push(`$${values.length} = ANY(countries)`);
-    }
+    const conditions = statsConditions(parsed, values);
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const { rows } = await pool.query(
@@ -267,13 +285,8 @@ app.get("/api/trend", async (req, res, next) => {
     if (!parsed.success) {
       return res.status(400).json({ error: "Tham số không hợp lệ", details: parsed.error.issues });
     }
-    const { country } = parsed.data;
-    const conditions = [`first_seen_at >= now() - interval '30 days'`];
     const values = [];
-    if (country) {
-      values.push(country);
-      conditions.push(`$${values.length} = ANY(countries)`);
-    }
+    const conditions = [`first_seen_at >= now() - interval '30 days'`, ...statsConditions(parsed, values)];
 
     const { rows } = await pool.query(
       `SELECT date_trunc('day', first_seen_at)::date AS day, COUNT(*) AS ads_discovered

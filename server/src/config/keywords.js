@@ -3,6 +3,12 @@
 //   - Ngành hàng: CHỈ còn "Mỹ phẩm & Làm đẹp" (bao gồm cả từ khóa chăm sóc da như
 //     "cuidado de la piel", "skincare", "sérum facial", "vitamin c serum"...).
 //     Đã gỡ toàn bộ mục category "Thời trang" khỏi MX và US.
+//   - GHI CHÚ PHẠM VI HIỂN THỊ (26/10/2026 — lần 2): gỡ khỏi config chỉ ngừng quét mới, dữ liệu cũ
+//     vẫn còn trong DB. Để giao diện CHỈ liệt kê MX/US + Mỹ phẩm & Làm đẹp (không còn KR/TH/MY,
+//     Thời trang, SHEIN/Rothy's/Temu... trong dropdown Ngành hàng/Thương hiệu), backend + frontend
+//     đã được sửa để mặc định scope MX,US + category "Mỹ phẩm & Làm đẹp" và ẩn các Page có
+//     category lẫn Thời trang (VD SHEIN Mexico có cả 2 category). Muốn xóa hẳn dữ liệu cũ khỏi
+//     DB thì phải chạy DELETE riêng — chưa làm trong lần sửa này.
 //   - Theo tiền lệ gỡ "Đồ gia dụng" (16/09/2026): gỡ khỏi danh sách chỉ NGỪNG QUÉT MỚI,
 //     KHÔNG xóa dữ liệu ad cũ trong DB — ad KR/TH/MY và Thời trang đã quét trước đó vẫn
 //     còn trong DB và vẫn xem được qua tìm kiếm/thương hiệu, chỉ không còn trong dropdown
@@ -102,6 +108,26 @@ export const MARKETS = {
       { keyword: "Avon", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "M.A.C Cosmetics", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
 
+      // --- Đối thủ từ file creative SEYOUL (26/10/2026 — Đăng gửi 2 file Excel, cột "Brand competitor") ---
+      // Nguồn: SEYOUL_PDRN_Creative_MX_US_2026-10-19.xlsx (sheet "Creative doi thu", 11 dòng)
+      // và Seyoul_TCollagen_Creative_MX_US_2026-10-20.xlsx (sheet "Creative doi thu", 10 dòng).
+      // Đây là dữ liệu creative TikTok tham khảo, thị trường trong file phần lớn "Chưa xác minh",
+      // chỉ vài dòng ghi rõ MX/US — nên thêm cả 10 brand vào CẢ MX và US để cron Meta Ad Library
+      // tự xác minh lại xem brand đó có chạy ad ở thị trường nào. 10 brand này trước đó CHƯA có
+      // trong config MX/US. Không thêm "Olive Young" (đó là nhà bán lẻ, không phải brand mỹ phẩm)
+      // và không thêm dòng "SKIN1004 và nhiều brand" (không xác định được brand cụ thể).
+      // "VT" giữ nguyên đúng tên trong file (nhiều khả năng là VT Cosmetics, nhưng file chỉ ghi "VT").
+      { keyword: "Medicube", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Rejuran", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Anua", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "VT", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "EQQUALBERRY", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "SKIN1004", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Dr. Althea", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Eucerin", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Round Lab", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Beauty of Joseon", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],
   },
@@ -135,6 +161,26 @@ export const MARKETS = {
       { keyword: "Glossier", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "Rhode Skin", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
       { keyword: "Fenty Beauty", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+
+      // --- Đối thủ từ file creative SEYOUL (26/10/2026 — Đăng gửi 2 file Excel, cột "Brand competitor") ---
+      // Nguồn: SEYOUL_PDRN_Creative_MX_US_2026-10-19.xlsx (sheet "Creative doi thu", 11 dòng)
+      // và Seyoul_TCollagen_Creative_MX_US_2026-10-20.xlsx (sheet "Creative doi thu", 10 dòng).
+      // Đây là dữ liệu creative TikTok tham khảo, thị trường trong file phần lớn "Chưa xác minh",
+      // chỉ vài dòng ghi rõ MX/US — nên thêm cả 10 brand vào CẢ MX và US để cron Meta Ad Library
+      // tự xác minh lại xem brand đó có chạy ad ở thị trường nào. 10 brand này trước đó CHƯA có
+      // trong config MX/US. Không thêm "Olive Young" (đó là nhà bán lẻ, không phải brand mỹ phẩm)
+      // và không thêm dòng "SKIN1004 và nhiều brand" (không xác định được brand cụ thể).
+      // "VT" giữ nguyên đúng tên trong file (nhiều khả năng là VT Cosmetics, nhưng file chỉ ghi "VT").
+      { keyword: "Medicube", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Rejuran", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Anua", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "VT", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "EQQUALBERRY", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "SKIN1004", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Dr. Althea", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Eucerin", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Round Lab", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
+      { keyword: "Beauty of Joseon", type: "brand", category: "Mỹ phẩm & Làm đẹp" },
 
       // thêm từ khóa/thương hiệu của bạn ở đây (nhớ khai báo đủ type + category)
     ],

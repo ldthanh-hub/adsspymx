@@ -38,7 +38,7 @@ export default function Home() {
   const [showAllBrands, setShowAllBrands] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("active"); // active | inactive | all
-  const [countryFilter, setCountryFilter] = useState(""); // "" = tất cả thị trường | "MX" | "US"
+  const [countryFilter, setCountryFilter] = useState(""); // "" = tất cả thị trường CÒN LẠI (MX+US) | "MX" | "US" — từ 26/10/2026 không còn nghĩa là gộp KR/TH/MY nữa
   const [mediaTypeFilter, setMediaTypeFilter] = useState(""); // "" = tất cả | "video" | "image"
   const [contentSearch, setContentSearch] = useState(""); // tìm trong nội dung quảng cáo (q)
   const debouncedContentSearch = useDebouncedValue(contentSearch, 400);
@@ -76,13 +76,50 @@ export default function Home() {
   const fetchStats = useCallback(async () => {
     if (!API_BASE) return;
     try {
-      const suffix = countryFilter ? `?country=${encodeURIComponent(countryFilter)}` : "";
-      const [kwRes, brandRes] = await Promise.all([
-        fetch(`${API_BASE}/api/keywords${suffix}`),
-        fetch(`${API_BASE}/api/brands${suffix}`),
-      ]);
-      if (kwRes.ok) setKeywordStats((await kwRes.json()).data || []);
-      if (brandRes.ok) setBrandStats((await brandRes.json()).data || []);
+      // Mặc định scope MX+US + Mỹ phẩm & Làm đẹp (không truyền = backend gộp tất cả thị trường
+      // và ngành cũ trong DB, chính là lý do dropdown trước đây vẫn hiện 24 từ khóa gồm cả từ
+      // Hàn/Thái/Mã Lai và brand Thời trang). Khi chọn riêng MX hoặc US thì scope đúng thị trường đó.
+      // Gọi riêng từng thị trường rồi gộp ở client thay vì gọi 1 lần country=MX,US — vì backend
+      // cũ (trước khi Render deploy bản mới hỗ trợ country list) sẽ coi "MX,US" là 1 chuỗi duy
+      // nhất và trả về rỗng; gọi riêng thì đúng cả backend cũ lẫn mới, không bị trống sidebar
+      // trong khoảng Render đang deploy.
+      const countries = countryFilter ? [countryFilter] : ["MX", "US"];
+      const cat = encodeURIComponent("Mỹ phẩm & Làm đẹp");
+      const kwLists = [];
+      const brandLists = [];
+      for (const c of countries) {
+        const suffix = `?country=${encodeURIComponent(c)}&category=${cat}`;
+        const [kwRes, brandRes] = await Promise.all([
+          fetch(`${API_BASE}/api/keywords${suffix}`),
+          fetch(`${API_BASE}/api/brands${suffix}`),
+        ]);
+        // Backend cũ chưa có tham số category (zod sẽ bỏ qua key lạ) nên vẫn trả đủ dữ liệu —
+        // lọc Mỹ phẩm & Làm đẹp và gộp ở dưới sẽ xử lý nốt, không phụ thuộc vào backend mới.
+        if (kwRes.ok) kwLists.push((await kwRes.json()).data || []);
+        if (brandRes.ok) brandLists.push((await brandRes.json()).data || []);
+      }
+      const kwMap = new Map();
+      for (const list of kwLists)
+        for (const k of list) {
+          if (k.type !== "industry" || k.category !== "Mỹ phẩm & Làm đẹp") continue;
+          const prev = kwMap.get(k.keyword);
+          if (prev) {
+            prev.total = String(Number(prev.total) + Number(k.total));
+            prev.active = String(Number(prev.active) + Number(k.active));
+          } else kwMap.set(k.keyword, { ...k });
+        }
+      setKeywordStats([...kwMap.values()].sort((a, b) => Number(b.total) - Number(a.total)));
+      const brandMap = new Map();
+      for (const list of brandLists)
+        for (const b of list) {
+          const prev = brandMap.get(b.page_name);
+          if (prev) {
+            prev.total = String(Number(prev.total) + Number(b.total));
+            prev.active = String(Number(prev.active) + Number(b.active));
+            prev.categories = [...new Set([...(prev.categories || []), ...(b.categories || [])])];
+          } else brandMap.set(b.page_name, { ...b });
+        }
+      setBrandStats([...brandMap.values()].sort((a, b) => Number(b.total) - Number(a.total)));
     } catch {
       /* sidebar stats không critical — im lặng bỏ qua, bảng chính vẫn hoạt động */
     }
@@ -102,7 +139,8 @@ export default function Home() {
         if (selectedKeywords.size) params.set("keyword", Array.from(selectedKeywords).join(","));
         if (selectedBrands.size) params.set("page_names", Array.from(selectedBrands).join(","));
         if (debouncedContentSearch) params.set("q", debouncedContentSearch);
-        if (countryFilter) params.set("country", countryFilter);
+        params.set("country", countryFilter || "MX,US");
+        params.set("category", "Mỹ phẩm & Làm đẹp");
         if (mediaTypeFilter) params.set("media_type", mediaTypeFilter);
         if (statusFilter === "active") params.set("active_only", "true");
         else if (statusFilter === "inactive") params.set("active_only", "false");
@@ -210,7 +248,13 @@ export default function Home() {
 
   const visibleBrands = useMemo(() => {
     const text = brandFilterText.trim().toLowerCase();
-    let list = brandStats;
+    // Chỉ liệt kê Page thuần Mỹ phẩm & Làm đẹp: loại Page có category lẫn Thời trang
+    // (VD SHEIN Mexico có cả 2 category trong DB, nên dù backend đã lọc ad theo category thì
+    // Page đó vẫn lọt vào danh sách nếu chỉ lọc theo categories.includes). Page không có
+    // categories (dữ liệu cũ hiếm) thì giữ lại để không mất brand thật.
+    let list = brandStats.filter(
+      (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
+    );
     if (text) list = list.filter((b) => b.page_name.toLowerCase().includes(text));
     return showAllBrands || text ? list : list.slice(0, 30);
   }, [brandStats, brandFilterText, showAllBrands]);
@@ -251,7 +295,7 @@ export default function Home() {
           <Dropdown label="Thị trường" count={countryFilter ? 1 : 0} width={200}>
             <div className="dd-list">
               <button type="button" className={`dd-radio-row ${countryFilter === "" ? "active" : ""}`} onClick={() => setCountryFilter("")}>
-                Tất cả
+                Tất cả (MX + US)
               </button>
               {MARKET_CODES.map((code) => (
                 <button

@@ -101,7 +101,7 @@ export default function BrandsDashboard() {
   const debouncedTableSearch = useDebouncedValue(tableSearch, 300);
   const [tableSort, setTableSort] = useState("total"); // total | active | endurance
   const [visibleCount, setVisibleCount] = useState(TABLE_PAGE);
-  const [countryFilter, setCountryFilter] = useState("MX"); // mặc định thị trường gốc; "" = gộp tất cả
+  const [countryFilter, setCountryFilter] = useState("MX"); // mặc định thị trường gốc; "" = gộp MX+US (từ 26/10/2026, không còn gộp KR/TH/MY)
 
   useEffect(() => {
     if (!API_BASE) {
@@ -113,16 +113,43 @@ export default function BrandsDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const suffix = countryFilter ? `?country=${encodeURIComponent(countryFilter)}` : "";
-        const [brandsRes, kwRes, trendRes] = await Promise.all([
-          fetch(`${API_BASE}/api/brands${suffix}`),
-          fetch(`${API_BASE}/api/keywords${suffix}`),
-          fetch(`${API_BASE}/api/trend${suffix}`),
-        ]);
-        if (!brandsRes.ok || !kwRes.ok || !trendRes.ok) throw new Error("API trả về lỗi khi tải dashboard");
-        setBrandStats((await brandsRes.json()).data || []);
-        setKeywordStats((await kwRes.json()).data || []);
-        setTrend((await trendRes.json()).data || []);
+        // Gọi riêng từng thị trường rồi gộp ở client (lý do xem web/pages/index.js) — đúng cả
+        // backend cũ lẫn mới, không bị trống dashboard trong lúc Render deploy bản mới.
+        const countries = countryFilter ? [countryFilter] : ["MX", "US"];
+        const cat = encodeURIComponent("Mỹ phẩm & Làm đẹp");
+        const brandMap = new Map();
+        const kwMap = new Map();
+        const trendMap = new Map();
+        for (const c of countries) {
+          const suffix = `?country=${encodeURIComponent(c)}&category=${cat}`;
+          const [brandsRes, kwRes, trendRes] = await Promise.all([
+            fetch(`${API_BASE}/api/brands${suffix}`),
+            fetch(`${API_BASE}/api/keywords${suffix}`),
+            fetch(`${API_BASE}/api/trend${suffix}`),
+          ]);
+          if (!brandsRes.ok || !kwRes.ok || !trendRes.ok) throw new Error("API trả về lỗi khi tải dashboard");
+          for (const b of (await brandsRes.json()).data || []) {
+            const prev = brandMap.get(b.page_name);
+            if (prev) {
+              prev.total = String(Number(prev.total) + Number(b.total));
+              prev.active = String(Number(prev.active) + Number(b.active));
+              prev.categories = [...new Set([...(prev.categories || []), ...(b.categories || [])])];
+            } else brandMap.set(b.page_name, { ...b });
+          }
+          for (const k of (await kwRes.json()).data || []) {
+            const prev = kwMap.get(k.keyword);
+            if (prev) {
+              prev.total = String(Number(prev.total) + Number(k.total));
+              prev.active = String(Number(prev.active) + Number(k.active));
+            } else kwMap.set(k.keyword, { ...k });
+          }
+          for (const tr of (await trendRes.json()).data || []) {
+            trendMap.set(tr.day, (trendMap.get(tr.day) || 0) + Number(tr.ads_discovered));
+          }
+        }
+        setBrandStats([...brandMap.values()].sort((a, b) => Number(b.total) - Number(a.total)));
+        setKeywordStats([...kwMap.values()].sort((a, b) => Number(b.total) - Number(a.total)));
+        setTrend([...trendMap.entries()].map(([day, ads_discovered]) => ({ day, ads_discovered })).sort((a, b) => a.day.localeCompare(b.day)));
       } catch (err) {
         setError(err.message);
       } finally {
@@ -144,7 +171,10 @@ export default function BrandsDashboard() {
   );
 
   const industryBreakdown = useMemo(
-    () => keywordStats.filter((k) => k.type === "industry").sort((a, b) => Number(b.total) - Number(a.total)),
+    () =>
+      keywordStats
+        .filter((k) => k.type === "industry" && k.category === "Mỹ phẩm & Làm đẹp")
+        .sort((a, b) => Number(b.total) - Number(a.total)),
     [keywordStats]
   );
 
@@ -154,7 +184,11 @@ export default function BrandsDashboard() {
   );
 
   const filteredTable = useMemo(() => {
-    let rows = brandStats;
+    // Chỉ liệt kê thương hiệu thuần Mỹ phẩm & Làm đẹp (xem ghi chú ở web/pages/index.js) —
+    // loại Page lẫn category Thời trang (VD SHEIN Mexico) khỏi danh sách đối thủ mỹ phẩm.
+    let rows = brandStats.filter(
+      (b) => !b.categories || b.categories.length === 0 || (b.categories.length === 1 && b.categories[0] === "Mỹ phẩm & Làm đẹp")
+    );
     const text = debouncedTableSearch.trim().toLowerCase();
     if (text) rows = rows.filter((b) => b.page_name.toLowerCase().includes(text));
     const sorted = [...rows].sort((a, b) => {
@@ -171,7 +205,7 @@ export default function BrandsDashboard() {
         <div className="page-head">
           <div className="page-head-row">
             <div>
-              <h2>Dashboard Brand — {countryFilter ? MARKET_LABELS[countryFilter] || countryFilter : "Tất cả thị trường"}</h2>
+              <h2>Dashboard Brand — {countryFilter ? MARKET_LABELS[countryFilter] || countryFilter : "Tất cả (MX + US)"}</h2>
               <p className="muted">
                 Số liệu THẬT từ dữ liệu đã cào được (không có CTR/CVR/CPA hay lượt tìm kiếm — Meta Ad Library công khai
                 không cung cấp các số này, xem README).
@@ -179,7 +213,7 @@ export default function BrandsDashboard() {
             </div>
             <div className="market-toggle">
               <button className={countryFilter === "" ? "active" : ""} onClick={() => setCountryFilter("")}>
-                Tất cả
+                Tất cả (MX + US)
               </button>
               {MARKET_CODES.map((code) => (
                 <button key={code} className={countryFilter === code ? "active" : ""} onClick={() => setCountryFilter(code)}>
