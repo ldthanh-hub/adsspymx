@@ -5,6 +5,7 @@ import Dropdown from "../components/Dropdown";
 import {
   MARKET_LABELS,
   MARKET_CODES,
+  CHECKLIST_BRANDS,
   MEDIA_TYPE_LABELS,
   industryLabelVi,
   guessCategory,
@@ -203,6 +204,21 @@ export default function Home() {
   const clearBrandSearch = () => {
     setBrandSearch("");
     setBrandSearchInput("");
+  };
+
+  // Đồng bộ Brand với Dashboard (26/10/2026 — Đăng yêu cầu): bấm 1 brand trong checklist 30
+  // (dùng chung CHECKLIST_BRANDS ở web/lib/ui.js với Dashboard, sửa 1 chỗ là cả 2 tab cùng đổi)
+  // thì tab Quảng cáo lọc đúng brand đó, cơ chế y hệt ô "Tìm thương hiệu" — dùng tên brand làm
+  // từ khóa tìm (backend khớp OR theo tên Page / nội dung ad / từ khóa quét), hiện cả ad brand
+  // chính + affiliate, trạng thái chuyển sang Tất cả, xóa chọn dropdown Thương hiệu + Từ khoá
+  // để không AND nhầm. Brand "VT" tìm theo tên sẽ khớp rộng (chuỗi "vt" nằm trong nhiều từ khác)
+  // — đó là giới hạn sẵn có của cơ chế tìm brand theo chuỗi, không phải lỗi của dropdown này.
+  const selectChecklistBrand = (brand) => {
+    setBrandSearchInput(brand.name);
+    setBrandSearch(brand.name);
+    setStatusFilter("all");
+    setSelectedBrands(new Set());
+    setSelectedKeywords(new Set());
   };
 
   const refreshAll = () => {
@@ -412,6 +428,29 @@ export default function Home() {
                 </div>
               ))}
               {industryItems.length === 0 && <p className="muted small dd-empty">Chưa có dữ liệu.</p>}
+            </div>
+          </Dropdown>
+
+          <Dropdown label="Checklist brand" count={brandSearch ? 1 : 0} width={280}>
+            <div className="dd-head">
+              <span>30 brand — đồng bộ với Dashboard Brand</span>
+              {brandSearch && (
+                <button className="clear-link" onClick={clearBrandSearch}>
+                  Bỏ chọn
+                </button>
+              )}
+            </div>
+            <div className="dd-list scroll">
+              {CHECKLIST_BRANDS.map((b) => (
+                <button
+                  key={b.name}
+                  type="button"
+                  className={`dd-radio-row ${brandSearch === b.name ? "active" : ""}`}
+                  onClick={() => selectChecklistBrand(b)}
+                >
+                  {b.name}
+                </button>
+              ))}
             </div>
           </Dropdown>
 

@@ -1,60 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import Layout from "../components/Layout";
-import { MARKET_LABELS, MARKET_CODES, avatarGradient, initials, facebookUrlFor, useDebouncedValue } from "../lib/ui";
+import { MARKET_LABELS, MARKET_CODES, CHECKLIST_BRANDS, avatarGradient, initials, facebookUrlFor, useDebouncedValue } from "../lib/ui";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const TABLE_PAGE = 25;
 
-// DANH SÁCH BRAND ĐANG THEO DÕI (26/10/2026, khớp config/signals.js và config/competitors.js):
-// Dashboard mặc định CHỈ hiện 11 brand này (đã gộp Page thành Brand), không phải toàn bộ Page
-// đã phát hiện qua từ khóa ngành (Luum, L'Oréal, MAC... là nhiễu đối với mục đích phân tích đối
-// thủ của Đăng). Muốn xem tất cả Page thì bấm "Hiện tất cả Page đã phát hiện" ở ô Lọc theo Brand.
-// keys: từ khóa dùng cho API creative/trends (không dùng để gộp Page — xem pageMatchesTracked).
-// CHECKLIST 30 BRAND (26/10/2026 — Đăng yêu cầu: chỉ cần checklist này là đủ, xóa 2 nút
-// chuyển chế độ, dashboard không còn chế độ "xem tất cả Page" nữa):
-//   Nhóm A — Brand của Đăng (11, từ 2 file Excel creative SEYOUL + Seyoul): giữ nguyên.
-//   Nhóm B — Brand lớn mới (19): US skincare/mỹ phẩm lớn + MX lớn, đã kiểm chứng qua tìm kiếm
-//   ngày 26/10/2026 (xem ghi chú ở keywords.js). Brand nào đã có sẵn trong config quét từ trước
-//   (Bissú, Ahal, Maybelline, L'Oréal Paris, Avon, M.A.C, Pai Pai, Kosas...) thì KHÔNG thêm
-//   vào đây để tránh trùng — chúng vẫn được quét, chỉ không nằm trong checklist Dashboard này
-//   vì checklist này là danh sách Đăng chốt để theo dõi tập trung, không phải toàn bộ config quét.
-const TRACKED_BRANDS = [
-  // Nhóm A — Brand của Đăng
-  { name: "Medicube", keys: ["medicube"] },
-  { name: "Rejuran", keys: ["rejuran"] },
-  { name: "Anua", keys: ["anua"] },
-  { name: "VT", keys: ["vt"] },
-  { name: "EQQUALBERRY", keys: ["eqqualberry"] },
-  { name: "SKIN1004", keys: ["skin1004"] },
-  { name: "Dr. Althea", keys: ["dralthea", "dr. althea", "dr althea"] },
-  { name: "Eucerin", keys: ["eucerin"] },
-  { name: "Round Lab", keys: ["roundlab", "round lab"] },
-  { name: "Beauty of Joseon", keys: ["beautyofjoseon", "beauty of joseon"] },
-  { name: "Seyoul", keys: ["seyoul"] },
-  // Nhóm B — Brand lớn mới, cả MX+US
-  { name: "CeraVe", keys: ["cerave"] },
-  { name: "La Roche-Posay", keys: ["la roche-posay", "larocheposay"] },
-  { name: "Neutrogena", keys: ["neutrogena"] },
-  { name: "Cetaphil", keys: ["cetaphil"] },
-  { name: "Olay", keys: ["olay"] },
-  { name: "Nivea", keys: ["nivea"] },
-  { name: "Lancôme", keys: ["lancôme", "lancome"] },
-  // Nhóm B — Brand lớn mới, chủ yếu Mỹ
-  { name: "The Ordinary", keys: ["the ordinary", "theordinary"] },
-  { name: "Clinique", keys: ["clinique"] },
-  { name: "Paula's Choice", keys: ["paula's choice", "paulas choice"] },
-  { name: "SkinCeuticals", keys: ["skinceuticals"] },
-  { name: "Estée Lauder", keys: ["estée lauder", "estee lauder"] },
-  { name: "Aveeno", keys: ["aveeno"] },
-  { name: "Drunk Elephant", keys: ["drunk elephant", "drunkelephant"] },
-  { name: "Glow Recipe", keys: ["glow recipe", "glowrecipe"] },
-  // Nhóm B — Brand lớn mới, chủ yếu Mexico
-  { name: "Natura", keys: ["natura"] },
-  { name: "Arabela", keys: ["arabela"] },
-  { name: "Jafra", keys: ["jafra"] },
-  { name: "Mary Kay", keys: ["mary kay", "marykay"] },
-];
+// Checklist 30 brand dùng chung với tab Quảng cáo — sửa ở web/lib/ui.js (CHECKLIST_BRANDS),
+// không sửa ở đây để 2 tab không lệch nhau nữa.
+const TRACKED_BRANDS = CHECKLIST_BRANDS;
 
 // Gộp Page vào Brand CHỈ theo TÊN PAGE, không theo từ khóa — sửa sau khi kiểm chứng thật
 // với API live ngày 26/10/2026: nếu gộp theo từ khóa thì Page "Amazon México Belleza" (23 ad,
@@ -832,7 +786,7 @@ export default function BrandsDashboard() {
                   Tương tác = like + comment + share cộng dồn mọi ad (không tính video views — view khác đơn vị).
                   Số liệu là best-effort từ Meta Ad Library: ad không gắn post công khai thì không parse được
                   tương tác, nên brand có tỉ lệ parse thấp thì số này bị thiếu, không phải "không ai tương tác".
-                  Nếu backend chưa deploy bản mới, các cột này sẽ hiện 0 — tải lại sau khi Render deploy xong.
+                  Số 0 ở đây nghĩa là chưa có ad nào của brand đó được parse tương tác (backend đã deploy bản mới, /api/brands MX đã trả 861 dòng ngày 26/10/2026 — không phải do chưa deploy). Tương tác chỉ parse được cho ad gắn post công khai, và mỗi lần cron chỉ parse tối đa 30 ad mới, nên brand mới sẽ lên dần theo các lần cron tới, không lên ngay trong ngày đầu.
                 </p>
                 <div className="table-wrap">
                   <table>
@@ -966,9 +920,24 @@ export default function BrandsDashboard() {
               <p className="panel-sub">
                 3 nguồn này có đơn vị và độ tin cậy RIÊNG, không cộng chung với số Meta ở trên.
                 Dữ liệu do job fetch-signals kéo 1 lần/ngày (GitHub Actions, 08:00 giờ Mexico),
-                không phải realtime. Chưa có dữ liệu nghĩa là job chưa chạy lần nào — vào GitHub
-                repo, tab Actions, workflow "Fetch tín hiệu ngoài Meta", bấm Run workflow để kéo lần đầu.
+                không phải realtime. QUAN TRỌNG: 3 nguồn này hiện CHỈ cover 11 brand gốc (10 đối thủ
+                + Seyoul), chưa mở rộng lên checklist 30 — nên khi đang lọc 1 brand mới (VD CeraVe,
+                Natura) thì 3 bảng dưới trống là đúng, không phải do workflow chưa chạy; bỏ lọc
+                brand để xem đủ 11 brand gốc. Mercado hiện vẫn trống vì lần chạy signals gần nhất
+                (26/10) dùng code cũ trước khi sửa captcha — lần chạy tiếp theo (21:00 tối nay giờ
+                Việt Nam, hoặc bấm Run workflow tay) mới ghi trạng thái captcha mới, và kể cả vậy
+                thì Mercado vẫn có thể không có số vì tường captcha là rào thật.
               </p>
+              {selectedBrand &&
+                tiktokSignals.length > 0 &&
+                trendsSignals.length > 0 &&
+                ![...tiktokSignals, ...trendsSignals].some((r) => signalMatchesFilter(r.brand)) && (
+                  <p className="panel-sub" style={{ color: "#8e6b00" }}>
+                    Đang lọc brand "{selectedBrand}" — brand này chưa nằm trong danh sách tín hiệu
+                    11 brand gốc, nên TikTok / Mercado / Trends dưới đây trống là đúng. Bỏ lọc brand
+                    để xem tín hiệu của 11 brand gốc.
+                  </p>
+                )}
 
               <h4 style={{ margin: "16px 0 6px", fontSize: 13 }}>TikTok — lượt xem hashtag tích lũy</h4>
               <p className="panel-sub">
@@ -1299,8 +1268,10 @@ export default function BrandsDashboard() {
                 thì dùng API chính thức, không có key thì tìm kênh bằng trang kết quả tìm kiếm
                 YouTube qua trình duyệt thật — nếu YouTube chặn bot thì trạng thái ghi blocked.
                 Facebook: lấy Page có nhiều ad nhất của brand từ chính bảng ads, không đoán slug.
-                Instagram: chưa cấu hình handle chính thức cho brand nào nên hiện tại ghi
-                not_configured — anh gửi handle IG chính thức là thêm vào config là chạy được.
+                Instagram: chưa cấu hình handle chính thức cho brand nào nên cột Instagram hiện
+                "—" là đúng, không phải lỗi — anh gửi handle IG chính thức là thêm vào config là
+                chạy được (trước đây cột này ghi 11 dòng "Trạng thái: not_configured" trông như lỗi
+                nên đã đổi thành "—").
                 Số followers/subscribers ở đây là số công khai tại thời điểm job chạy, không phải
                 số realtime.
               </p>
@@ -1359,7 +1330,13 @@ export default function BrandsDashboard() {
                             )}
                           </td>
                           <td>
-                            {r.instagram ? `Trạng thái: ${r.instagram.status} (chưa cấu hình handle)` : "—"}
+                            {r.instagram
+                              ? r.instagram.status === "success"
+                                ? `${r.instagram.channel_name || "—"} — ${fmtNum(r.instagram.followers)} followers`
+                                : r.instagram.status === "not_configured"
+                                  ? "—"
+                                  : `Trạng thái: ${r.instagram.status}`
+                              : "—"}
                           </td>
                           <td>
                             {r.youtube?.fetched_at ? String(r.youtube.fetched_at).slice(0, 10) : "—"}

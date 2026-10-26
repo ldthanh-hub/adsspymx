@@ -11,6 +11,53 @@ export const MARKET_LABELS = {
 };
 export const MARKET_CODES = Object.keys(MARKET_LABELS);
 
+// CHECKLIST 30 BRAND DÙNG CHUNG CHO CẢ 2 TAB (26/10/2026 — Đăng yêu cầu "đồng bộ Brand qua
+// tab Quảng cáo"): SỬA DANH SÁCH NÀY Ở ĐÂY LÀ CẢ Dashboard Brand VÀ tab Quảng cáo cùng đổi,
+// không còn 2 danh sách riêng lệch nhau nữa. Dashboard dùng nó để gộp Page thành Brand, tab
+// Quảng cáo dùng nó làm dropdown "Checklist brand" (bấm 1 brand là tìm brand đó, cơ chế giống
+// ô "Tìm thương hiệu", hiện cả ad brand chính + affiliate).
+//   Nhóm A — Brand của Đăng (11, từ 2 file Excel creative SEYOUL + Seyoul).
+//   Nhóm B — Brand lớn mới (19): cả MX+US (CeraVe, La Roche-Posay, Neutrogena, Cetaphil, Olay,
+//   Nivea, Lancôme), chủ yếu US (The Ordinary, Clinique, Paula's Choice, SkinCeuticals, Estée
+//   Lauder, Aveeno, Drunk Elephant, Glow Recipe), chủ yếu MX (Natura, Arabela, Jafra, Mary Kay).
+// LƯU Ý: checklist này KHÁC với danh sách tín hiệu (signals.js) và đối thủ mở rộng
+// (competitors.js) — 2 danh sách đó vẫn chỉ cover 11 brand gốc, chưa mở rộng lên 30. Đừng nhầm
+// "brand có trong checklist" với "brand có tín hiệu/website/social" — panel tín hiệu và social
+// sẽ trống cho brand mới là đúng, không phải lỗi.
+export const CHECKLIST_BRANDS = [
+  { name: "Medicube", keys: ["medicube"] },
+  { name: "Rejuran", keys: ["rejuran"] },
+  { name: "Anua", keys: ["anua"] },
+  { name: "VT", keys: ["vt"] },
+  { name: "EQQUALBERRY", keys: ["eqqualberry"] },
+  { name: "SKIN1004", keys: ["skin1004"] },
+  { name: "Dr. Althea", keys: ["dralthea", "dr. althea", "dr althea"] },
+  { name: "Eucerin", keys: ["eucerin"] },
+  { name: "Round Lab", keys: ["roundlab", "round lab"] },
+  { name: "Beauty of Joseon", keys: ["beautyofjoseon", "beauty of joseon"] },
+  { name: "Seyoul", keys: ["seyoul"] },
+  { name: "CeraVe", keys: ["cerave"] },
+  { name: "La Roche-Posay", keys: ["la roche-posay", "larocheposay"] },
+  { name: "Neutrogena", keys: ["neutrogena"] },
+  { name: "Cetaphil", keys: ["cetaphil"] },
+  { name: "Olay", keys: ["olay"] },
+  { name: "Nivea", keys: ["nivea"] },
+  { name: "Lancôme", keys: ["lancôme", "lancome"] },
+  { name: "The Ordinary", keys: ["the ordinary", "theordinary"] },
+  { name: "Clinique", keys: ["clinique"] },
+  { name: "Paula's Choice", keys: ["paula's choice", "paulas choice"] },
+  { name: "SkinCeuticals", keys: ["skinceuticals"] },
+  { name: "Estée Lauder", keys: ["estée lauder", "estee lauder"] },
+  { name: "Aveeno", keys: ["aveeno"] },
+  { name: "Drunk Elephant", keys: ["drunk elephant", "drunkelephant"] },
+  { name: "Glow Recipe", keys: ["glow recipe", "glowrecipe"] },
+  { name: "Natura", keys: ["natura"] },
+  { name: "Arabela", keys: ["arabela"] },
+  { name: "Jafra", keys: ["jafra"] },
+  { name: "Mary Kay", keys: ["mary kay", "marykay"] },
+];
+
+
 export const MEDIA_TYPE_LABELS = { video: "Video", image: "Hình ảnh", none: "Không có ảnh/video" };
 
 // Nhãn tiếng Việt cho các từ khóa NGÀNH HÀNG (type: "industry" trong config/keywords.js) — chỉ
