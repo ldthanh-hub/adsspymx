@@ -100,6 +100,12 @@ export default function BrandsDashboard() {
   const [tableSearch, setTableSearch] = useState("");
   const debouncedTableSearch = useDebouncedValue(tableSearch, 300);
   const [tableSort, setTableSort] = useState("total"); // total | active | endurance | engagement
+  // Tín hiệu ngoài Meta — fetch riêng, lỗi ở đây KHÔNG được làm hỏng dashboard Meta chính:
+  // backend cũ chưa có endpoint /api/signals/* sẽ trả 404, frontend bắt và hiện "Chưa có dữ liệu".
+  const [tiktokSignals, setTiktokSignals] = useState([]);
+  const [mercadoSignals, setMercadoSignals] = useState([]);
+  const [trendsSignals, setTrendsSignals] = useState([]);
+  const [signalRuns, setSignalRuns] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null); // page_name đang phân tích sâu
   const [brandTrend, setBrandTrend] = useState([]);
   const [brandTrendLoading, setBrandTrendLoading] = useState(false);
@@ -171,6 +177,28 @@ export default function BrandsDashboard() {
       }
     })();
   }, [countryFilter]);
+
+  // Kéo tín hiệu ngoài Meta 1 lần khi mở trang (không phụ thuộc countryFilter vì 3 nguồn
+  // này đều gắn với Mexico / hashtag toàn cầu, không chia MX/US như Meta).
+  useEffect(() => {
+    if (!API_BASE) return;
+    (async () => {
+      const load = async (path, setter) => {
+        try {
+          const res = await fetch(`${API_BASE}${path}`);
+          if (res.ok) setter((await res.json()).data || []);
+        } catch {
+          // Backend cũ chưa có endpoint: giữ mảng rỗng, panel hiện "Chưa có dữ liệu".
+        }
+      };
+      await Promise.all([
+        load("/api/signals/tiktok", setTiktokSignals),
+        load("/api/signals/mercado", setMercadoSignals),
+        load("/api/signals/trends", setTrendsSignals),
+        load("/api/signals/runs", setSignalRuns),
+      ]);
+    })();
+  }, []);
 
   // Xu hướng RIÊNG của brand đang chọn: gọi /api/trend?brand=... từng thị trường rồi gộp ngày
   // (giống cách gộp dashboard chính) — brand ở đây khớp OR giống /api/ads nên xu hướng của 1
@@ -276,6 +304,66 @@ export default function BrandsDashboard() {
       .sort((a, b) => Number(b.total) - Number(a.total))
       .slice(0, 10);
   }, [selectedRow, brandStats]);
+
+  const fmtNum = (n) => (n == null || n === "" ? "—" : Number(n).toLocaleString());
+
+  // Mercado: gom listing theo brand — tổng đã bán chỉ tính các listing có sold_quantity,
+  // listing không parse được số bán thì không cộng vào (không đoán), giá lấy min/max có thật.
+  const mercadoSummary = useMemo(() => {
+    const map = new Map();
+    for (const row of mercadoSignals) {
+      const prev = map.get(row.brand) || {
+        brand: row.brand,
+        count: 0,
+        totalSold: 0,
+        soldKnown: 0,
+        minPrice: null,
+        maxPrice: null,
+        top: null,
+        fetched_at: row.fetched_at,
+      };
+      prev.count += 1;
+      if (row.sold_quantity != null) {
+        prev.totalSold += Number(row.sold_quantity);
+        prev.soldKnown += 1;
+        if (!prev.top || Number(row.sold_quantity) > Number(prev.top.sold_quantity)) prev.top = row;
+      }
+      if (row.price != null) {
+        prev.minPrice = prev.minPrice == null ? Number(row.price) : Math.min(prev.minPrice, Number(row.price));
+        prev.maxPrice = prev.maxPrice == null ? Number(row.price) : Math.max(prev.maxPrice, Number(row.price));
+      }
+      if (row.fetched_at > prev.fetched_at) prev.fetched_at = row.fetched_at;
+      map.set(row.brand, prev);
+    }
+    return [...map.values()].sort((a, b) => b.totalSold - a.totalSold);
+  }, [mercadoSignals]);
+
+  // Trạng thái chạy gần nhất theo nguồn — để panel hiện đúng "đang chạy tốt / bị chặn / lỗi"
+  // thay vì im lặng khi không có số.
+  const runStatusBySource = useMemo(() => {
+    const map = {};
+    for (const r of signalRuns) {
+      if (!map[r.source] || (r.finished_at || "") > (map[r.source].finished_at || "")) map[r.source] = r;
+    }
+    return map;
+  }, [signalRuns]);
+
+  const mercadoBlocked = useMemo(
+    () => signalRuns.filter((r) => r.source === "mercado" && (r.status === "blocked" || r.status === "error")),
+    [signalRuns]
+  );
+
+  // TikTok: xếp theo lượt xem hashtag tích lũy (số này là tổng tích lũy, so sánh được giữa
+  // các brand — khác với Trends, mỗi brand chuẩn hóa riêng). VT và Round Lab dùng hashtag
+  // cụ thể đã ghi trong config/signals.js, không phải tên brand thô.
+  const tiktokSorted = useMemo(
+    () => [...tiktokSignals].sort((a, b) => Number(b.view_count || 0) - Number(a.view_count || 0)),
+    [tiktokSignals]
+  );
+
+  // Trends: KHÔNG xếp hạng theo interest_avg — mỗi brand chuẩn hóa riêng về đỉnh 100 của
+  // chính nó, xếp hạng sẽ gây hiểu nhầm. Sắp xếp theo tên để đọc từng brand độc lập.
+  const trendsSorted = useMemo(() => [...trendsSignals].sort((a, b) => a.brand.localeCompare(b.brand)), [trendsSignals]);
 
   const brandTrendPoints = useMemo(
     () => brandTrend.map((t) => ({ day: t.day, value: Number(t.ads_discovered) })),
@@ -529,6 +617,159 @@ export default function BrandsDashboard() {
                 </div>
               </div>
             )}
+
+            <div className="panel">
+              <h3>Tín hiệu ngoài Meta — Google, Mercado Libre, TikTok</h3>
+              <p className="panel-sub">
+                3 nguồn này có đơn vị và độ tin cậy RIÊNG, không cộng chung với số Meta ở trên.
+                Dữ liệu do job fetch-signals kéo 1 lần/ngày (GitHub Actions, 08:00 giờ Mexico),
+                không phải realtime. Chưa có dữ liệu nghĩa là job chưa chạy lần nào — vào GitHub
+                repo, tab Actions, workflow "Fetch tín hiệu ngoài Meta", bấm Run workflow để kéo lần đầu.
+              </p>
+
+              <h4 style={{ margin: "16px 0 6px", fontSize: 13 }}>TikTok — lượt xem hashtag tích lũy</h4>
+              <p className="panel-sub">
+                Nguồn: TikWM challenge/info, không cần key, đã kiểm chứng thật ngày 26/10/2026.
+                Đây là lượt xem hashtag CỘNG DỒN từ trước tới nay, không phải lượt xem trong 1 ngày —
+                muốn thấy tăng trưởng thì so snapshot hôm nay với hôm trước. VT dùng hashtag
+                "vtcosmetics", Round Lab dùng "roundlabskincare" (xem ghi chú trong config/signals.js).
+              </p>
+              {tiktokSorted.length === 0 ? (
+                <p className="chart-empty">Chưa có dữ liệu TikTok — chạy workflow fetch-signals lần đầu.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Thương hiệu</th>
+                        <th>Hashtag</th>
+                        <th>Lượt xem hashtag</th>
+                        <th>Số creator</th>
+                        <th>Cập nhật</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tiktokSorted.map((r) => (
+                        <tr key={r.brand}>
+                          <td>
+                            <strong>{r.brand}</strong>
+                          </td>
+                          <td>#{r.hashtag}</td>
+                          <td>{fmtNum(r.view_count)}</td>
+                          <td>{fmtNum(r.user_count)}</td>
+                          <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Mercado Libre Mexico — listing và số đã bán</h4>
+              <p className="panel-sub">
+                Nguồn: Mercado Libre Mexico (site MLM). Số đã bán là sold_quantity tích lũy của từng
+                listing, không phải doanh thu và không phải tổng bán của cả brand (1 brand có nhiều
+                listing trùng sản phẩm). API Mercado chặn IP máy chủ (403, kiểm chứng thật ngày
+                26/10/2026) nên job thử API trước, nếu bị chặn thì chuyển sang mở trang web bằng
+                trình duyệt thật — nếu cả 2 đều chặn, bảng dưới sẽ trống và trạng thái chạy sẽ ghi
+                rõ là bị chặn, không bịa số.
+              </p>
+              {mercadoBlocked.length > 0 && (
+                <p className="panel-sub" style={{ color: "#c0392b" }}>
+                  Mercado đang bị chặn/lỗi ở các brand:{" "}
+                  {mercadoBlocked.map((r) => `${r.brand} (${r.status})`).join(", ")}. Các brand còn lại
+                  (nếu có số) vẫn hiện bình thường.
+                </p>
+              )}
+              {mercadoSummary.length === 0 ? (
+                <p className="chart-empty">
+                  Chưa có dữ liệu Mercado — chạy workflow fetch-signals lần đầu. Trong lúc chờ, xem
+                  trực tiếp tại listado.mercadolibre.com.mx và gõ tên brand vào ô tìm kiếm.
+                </p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Thương hiệu</th>
+                        <th>Số listing</th>
+                        <th>Tổng đã bán (listing có số)</th>
+                        <th>Khoảng giá (MX$)</th>
+                        <th>Listing bán chạy nhất</th>
+                        <th>Cập nhật</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mercadoSummary.map((r) => (
+                        <tr key={r.brand}>
+                          <td>
+                            <strong>{r.brand}</strong>
+                          </td>
+                          <td>{r.count}</td>
+                          <td>
+                            {fmtNum(r.totalSold)} <span className="muted small">({r.soldKnown}/{r.count} listing có số)</span>
+                          </td>
+                          <td>
+                            {r.minPrice == null ? "—" : `${fmtNum(r.minPrice)} - ${fmtNum(r.maxPrice)}`}
+                          </td>
+                          <td>
+                            {r.top ? (
+                              <a href={r.top.permalink} target="_blank" rel="noreferrer">
+                                {r.top.title ? r.top.title.slice(0, 60) : "Xem"} ({fmtNum(r.top.sold_quantity)} đã bán)
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Google Trends Mexico — chỉ số quan tâm tương đối, 90 ngày</h4>
+              <p className="panel-sub">
+                Chỉ số 0-100 được chuẩn hóa RIÊNG cho từng brand (100 là tuần/ngày cao nhất của chính
+                brand đó trong 90 ngày), không phải số lượt tìm kiếm tuyệt đối, và không so sánh trực
+                tiếp chỉ số trung bình giữa các brand với nhau. Đọc đúng cách: xem chỉ số gần nhất so
+                với trung bình của chính brand đó (đang lên hay đang xuống), và xem đỉnh 100 rơi vào
+                ngày nào trong chuỗi điểm của brand đó.
+              </p>
+              {trendsSorted.length === 0 ? (
+                <p className="chart-empty">Chưa có dữ liệu Google Trends — chạy workflow fetch-signals lần đầu.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Thương hiệu</th>
+                        <th>Từ khóa</th>
+                        <th>Trung bình 90 ngày</th>
+                        <th>Đỉnh</th>
+                        <th>Gần nhất</th>
+                        <th>Cập nhật</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trendsSorted.map((r) => (
+                        <tr key={r.brand}>
+                          <td>
+                            <strong>{r.brand}</strong>
+                          </td>
+                          <td>{r.keyword}</td>
+                          <td>{r.interest_avg ?? "—"}</td>
+                          <td>{r.interest_max ?? "—"}</td>
+                          <td>{r.interest_last ?? "—"}</td>
+                          <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
             <div className="panel">
               <div className="table-head">

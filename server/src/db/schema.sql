@@ -81,3 +81,70 @@ CREATE TABLE IF NOT EXISTS fetch_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fetch_runs_started ON fetch_runs (started_at);
+
+-- ============ TÍN HIỆU NGOÀI META (thêm 26/10/2026 — Google Trends, Mercado Libre, TikTok) ============
+-- Nguyên tắc chung, giống bảng ads: chỉ lưu SỐ LIỆU + LINK, không lưu nội dung sáng tạo của
+-- đối thủ; mỗi lần job chạy là 1 snapshot mới (không ghi đè snapshot cũ) để vẽ được xu hướng
+-- theo thời gian. API chỉ đọc snapshot MỚI NHẤT mỗi brand (DISTINCT ON) + lịch sử snapshot.
+-- signal_runs ghi lại trạng thái từng nguồn từng brand — job KHÔNG được "nuốt lỗi im lặng":
+-- nguồn nào bị chặn (Mercado 403, Trends 429/411) thì panel dashboard hiện đúng trạng thái đó.
+CREATE TABLE IF NOT EXISTS signal_runs (
+  id            SERIAL PRIMARY KEY,
+  source        TEXT NOT NULL,              -- tiktok | mercado | trends
+  brand         TEXT NOT NULL,
+  started_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at   TIMESTAMPTZ,
+  status        TEXT NOT NULL DEFAULT 'running',  -- running | success | error | blocked
+  items_found   INT DEFAULT 0,
+  error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_signal_runs_source_brand ON signal_runs (source, brand, started_at DESC);
+
+-- TikTok: số liệu hashtag tích lũy từ TikWM challenge/info (không cần key, kiểm chứng thật
+-- từ VM ngày 26/10/2026). Đây là lượt xem hashtag CỘNG DỒN từ trước tới nay, KHÔNG phải lượt
+-- xem trong 1 ngày — muốn thấy tăng trưởng thì so snapshot hôm nay với snapshot hôm trước.
+CREATE TABLE IF NOT EXISTS tiktok_hashtags (
+  id          SERIAL PRIMARY KEY,
+  brand       TEXT NOT NULL,
+  hashtag     TEXT NOT NULL,
+  view_count  BIGINT,
+  user_count  BIGINT,
+  fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tiktok_hashtags_brand ON tiktok_hashtags (brand, fetched_at DESC);
+
+-- Mercado Libre Mexico: 1 dòng = 1 listing tìm thấy trong lần quét (tối đa 50 listing/brand).
+-- sold_quantity là số lượng ĐÃ BÁN TÍCH LŨY của listing đó (Mercado công khai), không phải
+-- doanh thu — muốn ước doanh thu thì nhân với price, nhưng panel chỉ hiện tổng đã bán và
+-- khoảng giá, không tự suy ra doanh thu tuyệt đối vì 1 brand có nhiều listing trùng sản phẩm.
+CREATE TABLE IF NOT EXISTS mercado_listings (
+  id                 SERIAL PRIMARY KEY,
+  brand              TEXT NOT NULL,
+  item_id            TEXT NOT NULL,
+  title              TEXT,
+  price              NUMERIC,
+  currency           TEXT,
+  sold_quantity      INT,
+  available_quantity INT,
+  seller_nickname    TEXT,
+  permalink          TEXT,
+  thumbnail          TEXT,
+  fetched_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mercado_listings_brand ON mercado_listings (brand, fetched_at DESC);
+
+-- Google Trends: CHỈ SỐ QUAN TÂM TƯƠNG ĐỐI 0-100 (vùng MX, 90 ngày, theo tuần), KHÔNG phải
+-- số lượt tìm kiếm tuyệt đối — 100 = tuần cao nhất trong khung, không phải 100 lượt tìm.
+-- points lưu nguyên chuỗi tuần [{date, value}] để vẽ biểu đồ; interest_avg/max/last là tóm tắt.
+CREATE TABLE IF NOT EXISTS google_trends (
+  id            SERIAL PRIMARY KEY,
+  brand         TEXT NOT NULL,
+  keyword       TEXT NOT NULL,
+  geo           TEXT NOT NULL DEFAULT 'MX',
+  interest_avg  NUMERIC,
+  interest_max  INT,
+  interest_last INT,
+  points        JSONB,
+  fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_google_trends_brand ON google_trends (brand, fetched_at DESC);

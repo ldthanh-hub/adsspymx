@@ -332,6 +332,64 @@ app.get("/api/trend", async (req, res, next) => {
   }
 });
 
+// ============ TÍN HIỆU NGOÀI META (thêm 26/10/2026) ============
+// 3 endpoint chỉ đọc, trả snapshot MỚI NHẤT mỗi brand (DISTINCT ON của Postgres).
+// Nếu job fetch-signals chưa chạy lần nào thì data = [] — frontend hiện "Chưa có dữ liệu,
+// chạy workflow fetch-signals", KHÔNG hiện số 0 giả. Số liệu 3 nguồn này KHÔNG được cộng
+// chung với số Meta (ad/tương tác) ở bất kỳ đâu: mỗi nguồn có đơn vị và độ tin cậy riêng.
+app.get("/api/signals/tiktok", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (brand) brand, hashtag, view_count, user_count, fetched_at
+       FROM tiktok_hashtags ORDER BY brand, fetched_at DESC`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/signals/mercado", async (req, res, next) => {
+  try {
+    // 1 snapshot = toàn bộ listing của 1 brand trong lần quét mới nhất của brand đó.
+    const { rows } = await pool.query(
+      `SELECT brand, item_id, title, price, currency, sold_quantity, permalink, fetched_at
+       FROM mercado_listings
+       WHERE fetched_at >= (
+         SELECT MAX(fetched_at) FROM mercado_listings ml2 WHERE ml2.brand = mercado_listings.brand
+       )
+       ORDER BY brand, sold_quantity DESC NULLS LAST`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/signals/trends", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (brand) brand, keyword, geo, interest_avg, interest_max, interest_last, points, fetched_at
+       FROM google_trends ORDER BY brand, fetched_at DESC`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/signals/runs", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (source, brand) source, brand, status, items_found, error_message, finished_at
+       FROM signal_runs ORDER BY source, brand, finished_at DESC NULLS LAST`
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Error handler tập trung — log đầy đủ ở server, trả về client thông điệp chung chung.
 app.use((err, req, res, _next) => {
   console.error("[api] Lỗi xử lý request:", err);
