@@ -100,7 +100,12 @@ function BarList({ rows, valueKey, max, onSelect, formatValue }) {
           <div className="bar-track">
             <div className="bar-fill" style={{ width: `${Math.max(4, (Number(r[valueKey]) / maxVal) * 100)}%` }} />
           </div>
-          <span className="bar-value">{formatValue ? formatValue(r[valueKey]) : r[valueKey]}</span>
+          <span
+            className="bar-value"
+            title={Number.isFinite(Number(r[valueKey])) ? Number(r[valueKey]).toLocaleString() : undefined}
+          >
+            {formatValue ? formatValue(r[valueKey]) : r[valueKey]}
+          </span>
         </div>
       ))}
       {rows.length === 0 && <p className="chart-empty">Chưa có dữ liệu.</p>}
@@ -468,6 +473,16 @@ export default function BrandsDashboard() {
   }, [selectedRow, basePages]);
 
   const fmtNum = (n) => (n == null || n === "" ? "—" : Number(n).toLocaleString());
+
+  // Rut gon so lon cho bieu do (27/10/2026, Dang bao so day du kho nhin): "21,46 ty"
+  // thay cho "21.464.641.608". Chi rut gon hien thi, gia tri goc van nam trong title khi hover.
+  const compactNum = (n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return "—";
+    if (v >= 1e9) return `${(v / 1e9).toFixed(2).replace(".", ",")} tỷ`;
+    if (v >= 1e6) return `${(v / 1e6).toFixed(2).replace(".", ",")} triệu`;
+    return fmtNum(n);
+  };
 
   // Tín hiệu của brand đang lọc: signal brand (VD "Medicube") khớp khi tên signal brand
   // trùng từ khóa của Page đang chọn, hoặc tên Page đang chọn chứa tên signal brand.
@@ -914,7 +929,7 @@ export default function BrandsDashboard() {
                     : "Chưa có dữ liệu TikTok — chạy workflow fetch-signals lần đầu."}
                 </p>
               ) : (
-                <BarList rows={tiktokBars} valueKey="views" formatValue={fmtNum} />
+                <BarList rows={tiktokBars} valueKey="views" formatValue={compactNum} />
               )}
 
               <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Google Trends Mexico — chỉ số quan tâm tương đối, 90 ngày</h4>
@@ -1386,11 +1401,10 @@ export default function BrandsDashboard() {
         }
         .bar-label {
           font-size: 12px;
-          width: 120px;
+          width: 150px;
           flex-shrink: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+          line-height: 1.35;
+          overflow-wrap: break-word;
         }
         .bar-track {
           flex: 1;
@@ -1411,9 +1425,9 @@ export default function BrandsDashboard() {
           font-size: 11.5px;
           font-weight: 700;
           color: #4c4e63;
-          width: 28px;
           text-align: right;
           flex-shrink: 0;
+          white-space: nowrap;
         }
 
         .table-head {
