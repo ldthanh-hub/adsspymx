@@ -19,7 +19,7 @@ const TRACKED_BRANDS = CHECKLIST_BRANDS;
 // "beautyofjoseon"). Affiliate dạng "X with Brand" cũng khớp vì tên đã chứa tên Brand.
 // VT là ngoại lệ: phải khớp theo từ độc lập (\bvt\b) hoặc bắt đầu bằng "VT", vì "vt" có thể
 // xuất hiện trong từ khác khi chuẩn hóa bỏ khoảng trắng.
-function LineChart({ points, width = 760, height = 180 }) {
+function LineChart({ points, width = 760, height = 180, unit = "ad" }) {
   // points: [{day, value}] đã sort theo ngày tăng dần. Vẽ area chart SVG tay, không dùng lib
   // ngoài — dữ liệu nhỏ (tối đa 30 điểm), không cần thư viện chart nặng.
   if (!points || points.length === 0) {
@@ -81,18 +81,18 @@ function LineChart({ points, width = 760, height = 180 }) {
         ) : null
       )}
       <text x={padding.left} y={padding.top - 4} fontSize="9.5" fill="#9799b8">
-        {maxVal} ad
+        {maxVal} {unit}
       </text>
     </svg>
   );
 }
 
-function BarList({ rows, valueKey, max }) {
+function BarList({ rows, valueKey, max, onSelect, formatValue }) {
   const maxVal = max || Math.max(1, ...rows.map((r) => Number(r[valueKey]) || 0));
   return (
     <div className="bar-list">
       {rows.map((r) => (
-        <div className="bar-row" key={r.page_name}>
+        <div className="bar-row" key={r.page_name} onClick={onSelect ? () => onSelect(r.page_name) : undefined} style={onSelect ? { cursor: "pointer" } : undefined}>
           <span className="bar-dot" style={{ background: avatarGradient(r.page_name) }} />
           <span className="bar-label" title={r.page_name}>
             {r.page_name}
@@ -100,7 +100,7 @@ function BarList({ rows, valueKey, max }) {
           <div className="bar-track">
             <div className="bar-fill" style={{ width: `${Math.max(4, (Number(r[valueKey]) / maxVal) * 100)}%` }} />
           </div>
-          <span className="bar-value">{r[valueKey]}</span>
+          <span className="bar-value">{formatValue ? formatValue(r[valueKey]) : r[valueKey]}</span>
         </div>
       ))}
       {rows.length === 0 && <p className="chart-empty">Chưa có dữ liệu.</p>}
@@ -546,6 +546,47 @@ export default function BrandsDashboard() {
     [trendsSignals, selectedBrand, selectedRow]
   );
 
+  // Bar cho dashboard sau khi doi bang -> bieu do (27/10/2026, Dang chot): BarList can
+  // page_name + 1 valueKey nen map truoc o day. Thu tu bar = gia tri giam dan.
+  const engagementBars = useMemo(
+    () => topEngagementBrands.map((b) => ({ page_name: b.page_name, interaction: interactionsOf(b) })),
+    [topEngagementBrands]
+  );
+  const angleBars = useMemo(
+    () =>
+      [...creativeData.angles]
+        .map((r) => ({ page_name: CREATIVE_LABELS[r.angle] || r.angle, active: Number(r.active_ads || 0) }))
+        .sort((a, b) => b.active - a.active),
+    [creativeData.angles]
+  );
+  const offerBars = useMemo(
+    () =>
+      [...creativeData.offers]
+        .map((r) => ({ page_name: CREATIVE_LABELS[r.offer] || r.offer, active: Number(r.active_ads || 0) }))
+        .sort((a, b) => b.active - a.active),
+    [creativeData.offers]
+  );
+  const tiktokBars = useMemo(
+    () => tiktokSorted.map((r) => ({ page_name: r.brand, views: Number(r.view_count || 0) })),
+    [tiktokSorted]
+  );
+  // Duong Trends 90 ngay cua brand dang chon (diem da keo ve san trong trendsSignals).
+  // Ngay Trends dang "26 jul 2026" (tieng Tay Ban Nha) -> doi sang ISO de LineChart hien DD/MM dung.
+  const selectedTrendPoints = useMemo(() => {
+    if (!selectedBrand) return [];
+    const row = trendsSignals.find((r) => signalMatchesFilter(r.brand));
+    if (!row || !row.points) return [];
+    const months = { ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06", jul: "07", ago: "08", sep: "09", sept: "09", oct: "10", nov: "11", dic: "12" };
+    return row.points.map((pt) => {
+      const m = String(pt.date || "").match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/i);
+      const day =
+        m && months[m[2].toLowerCase()]
+          ? `${m[3]}-${months[m[2].toLowerCase()]}-${String(m[1]).padStart(2, "0")}`
+          : String(pt.date || "");
+      return { day, value: Number(pt.value || 0) };
+    });
+  }, [selectedBrand, trendsSignals, selectedRow]);
+
   const filteredTable = useMemo(() => {
     const text = debouncedTableSearch.trim().toLowerCase();
     // Khi ĐANG tìm kiếm theo tên brand thì tìm cả theo từ khóa gắn với Page (b.keywords) —
@@ -752,38 +793,7 @@ export default function BrandsDashboard() {
                 <p className="panel-sub">
                   Tương tác = like + bình luận + chia sẻ cộng dồn mọi ad (không tính video views). Chỉ parse được ad gắn post công khai nên số có thể thiếu — số 0 nghĩa là chưa parse được tương tác, không phải “không ai tương tác”.
                 </p>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Thương hiệu</th>
-                        <th>Like</th>
-                        <th>Bình luận</th>
-                        <th>Chia sẻ</th>
-                        <th>Views</th>
-                        <th>Tương tác</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {topEngagementBrands.map((b) => (
-                        <tr key={b.page_name}>
-                          <td>
-                            <button className="btn-brand-name" onClick={() => setSelectedBrand(b.page_name)}>
-                              {b.page_name}
-                            </button>
-                          </td>
-                          <td>{b.total_likes ?? "—"}</td>
-                          <td>{b.total_comments ?? "—"}</td>
-                          <td>{b.total_shares ?? "—"}</td>
-                          <td>{b.total_video_views ?? "—"}</td>
-                          <td>
-                            <strong>{interactionsOf(b)}</strong>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BarList rows={engagementBars} valueKey="interaction" onSelect={(name) => setSelectedBrand(name)} formatValue={fmtNum} />
                 <p className="panel-sub">Bấm tên brand để xem phân tích sâu bên dưới.</p>
               </div>
               <div className="panel">
@@ -904,38 +914,19 @@ export default function BrandsDashboard() {
                     : "Chưa có dữ liệu TikTok — chạy workflow fetch-signals lần đầu."}
                 </p>
               ) : (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Thương hiệu</th>
-                        <th>Hashtag</th>
-                        <th>Lượt xem hashtag</th>
-                        <th>Số creator</th>
-                        <th>Cập nhật</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tiktokSorted.map((r) => (
-                        <tr key={r.brand}>
-                          <td>
-                            <strong>{r.brand}</strong>
-                          </td>
-                          <td>#{r.hashtag}</td>
-                          <td>{fmtNum(r.view_count)}</td>
-                          <td>{fmtNum(r.user_count)}</td>
-                          <td>{r.fetched_at ? String(r.fetched_at).slice(0, 10) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BarList rows={tiktokBars} valueKey="views" formatValue={fmtNum} />
               )}
 
               <h4 style={{ margin: "20px 0 6px", fontSize: 13 }}>Google Trends Mexico — chỉ số quan tâm tương đối, 90 ngày</h4>
               <p className="panel-sub">
                 Chỉ số 0-100 chuẩn hóa RIÊNG cho từng brand (100 là ngày cao nhất của chính brand đó trong 90 ngày), không phải lượt tìm kiếm tuyệt đối — không so trung bình giữa các brand với nhau. Đọc đúng cách: so chỉ số gần nhất với trung bình của chính brand đó (đang lên hay xuống).
               </p>
+              {selectedBrand && selectedTrendPoints.length > 0 && (
+                <>
+                  <p className="panel-sub">Đường 90 ngày của brand đang chọn (chỉ số 0-100, chuẩn hóa riêng cho brand này):</p>
+                  <LineChart points={selectedTrendPoints} unit="điểm" />
+                </>
+              )}
               {trendsSorted.length === 0 ? (
                 <p className="chart-empty">
                   {selectedBrand && trendsSignals.length > 0
@@ -1049,50 +1040,12 @@ export default function BrandsDashboard() {
                 <p className="chart-empty">Chưa có dữ liệu creative — chạy workflow fetch-competitors lần đầu (nguồn creative).</p>
               ) : (
                 <>
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Góc bán</th>
-                          <th>Tổng ad</th>
-                          <th>Đang chạy</th>
-                          <th>Bền nhất (ngày)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {creativeData.angles.map((r) => (
-                          <tr key={r.angle}>
-                            <td>{CREATIVE_LABELS[r.angle] || r.angle}</td>
-                            <td>{r.total_ads}</td>
-                            <td>{r.active_ads}</td>
-                            <td>{r.max_days_active ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="table-wrap" style={{ marginTop: 12 }}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Offer</th>
-                          <th>Tổng ad</th>
-                          <th>Đang chạy</th>
-                          <th>Bền nhất (ngày)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {creativeData.offers.map((r) => (
-                          <tr key={r.offer}>
-                            <td>{CREATIVE_LABELS[r.offer] || r.offer}</td>
-                            <td>{r.total_ads}</td>
-                            <td>{r.active_ads}</td>
-                            <td>{r.max_days_active ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <p className="panel-sub" style={{ margin: "12px 0 6px" }}><strong>Góc bán</strong> — số ad đang chạy</p>
+                  <BarList rows={angleBars} valueKey="active" />
+
+                  <p className="panel-sub" style={{ margin: "12px 0 6px" }}><strong>Offer</strong> — số ad đang chạy</p>
+                  <BarList rows={offerBars} valueKey="active" />
+
                   {creativeData.examples.length > 0 && (
                     <div style={{ marginTop: 12 }}>
                       <p className="panel-sub">Ad bền nhất đang chạy (kèm tóm tắt AI nếu có):</p>
