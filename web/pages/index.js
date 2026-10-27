@@ -69,7 +69,7 @@ export default function Home() {
   useEffect(() => {
     setScanCategory("");
   }, [contentSearch]);
-  const [sortMode, setSortMode] = useState("endurance"); // endurance | newest
+  const [sortMode, setSortMode] = useState("newest"); // endurance | newest — mặc định mới phát hiện lên đầu (27/10/2026, Đăng yêu cầu)
 
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -215,6 +215,10 @@ export default function Home() {
         if (mediaTypeFilter) params.set("media_type", mediaTypeFilter);
         if (statusFilter === "active") params.set("active_only", "true");
         else if (statusFilter === "inactive") params.set("active_only", "false");
+        // Gửi sort để server phân trang đúng thứ tự (27/10/2026): chỉ sắp client-side thì
+        // "Mới phát hiện" chỉ đảo trong 60 ad đầu (đang xếp theo chạy lâu nhất), không phải
+        // ad mới nhất toàn DB. Backend cũ chưa có tham số này sẽ lặng lẽ bỏ qua (zod strip).
+        params.set("sort", sortMode);
         params.set("limit", String(PAGE_SIZE));
         params.set("offset", String(offset));
 
@@ -232,7 +236,7 @@ export default function Home() {
         setLoadingMore(false);
       }
     },
-    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter, brandSearch, checklistPages, statsLoaded]
+    [selectedKeywords, selectedBrands, debouncedContentSearch, statusFilter, countryFilter, mediaTypeFilter, brandSearch, checklistPages, statsLoaded, sortMode]
   );
 
   useEffect(() => {

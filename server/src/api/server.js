@@ -64,6 +64,9 @@ const listQuerySchema = z.object({
   // active_only: 3 trạng thái — bỏ trống (tất cả) / "true" (chỉ đang chạy) / "false" (chỉ đã dừng).
   active_only: z.enum(["true", "false"]).optional(),
   min_days_active: z.coerce.number().int().min(0).max(3650).optional(),
+  // sort: thứ tự sắp xếp ad — "endurance" (mặc định cũ: chạy lâu nhất) | "newest" (mới phát hiện
+  // nhất lên đầu, theo first_seen_at). Frontend tab Quảng cáo gửi kèm khi đổi nút sắp xếp.
+  sort: z.enum(["endurance", "newest"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -96,6 +99,7 @@ app.get("/api/ads", async (req, res, next) => {
       media_type,
       active_only,
       min_days_active,
+      sort,
       limit,
       offset,
     } = parsed.data;
@@ -166,6 +170,10 @@ app.get("/api/ads", async (req, res, next) => {
     values.push(limit);
     values.push(offset);
 
+    // sort đã qua zod enum nên chỉ có 2 chuỗi cố định — không nối chuỗi user vào SQL.
+    const orderBy =
+      sort === "newest" ? "first_seen_at DESC NULLS LAST, last_seen_at DESC" : "days_active DESC NULLS LAST, last_seen_at DESC";
+
     const { rows } = await pool.query(
       `SELECT ad_id, page_id, page_name, keyword, creative_text, creative_title,
               snapshot_url, platforms, delivery_start_date, delivery_stop_date,
@@ -174,7 +182,7 @@ app.get("/api/ads", async (req, res, next) => {
               keyword_type, media_type, first_seen_at, last_seen_at
        FROM ads
        ${where}
-       ORDER BY days_active DESC NULLS LAST, last_seen_at DESC
+       ORDER BY ${orderBy}
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
     );
